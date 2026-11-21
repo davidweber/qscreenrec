@@ -1,4 +1,4 @@
-# QScreenRec 0.2.0
+# QScreenRec 0.2.1
 
 Cross-platform (Linux, macOS, Windows) screen recorder built on Qt 6 Widgets + Qt Multimedia.
 Records the entire screen, a dragged-out area of a screen, or a single window to a video file,
@@ -24,15 +24,15 @@ Run CPack in the build directory after building; it produces a self-contained pa
 
 | Platform | Output | Needs |
 |----------|--------|-------|
-| Windows | `qscreenrec-0.2.0-windows-x64.exe` (NSIS setup, Start-menu entry, uninstaller) + portable `.zip` | NSIS on PATH |
-| macOS | `qscreenrec-0.2.0-macos.dmg` (drag QScreenRec to Applications) | Xcode command-line tools |
-| Linux | `qscreenrec-0.2.0-linux-x86_64.deb`, `.rpm` (if `rpmbuild` exists), portable `.tar.gz` | `dpkg`, optionally `rpm` |
+| Windows | `qscreenrec-0.2.1-windows-x64.exe` (NSIS setup, Start-menu entry, uninstaller) + portable `.zip` | NSIS on PATH |
+| macOS | `qscreenrec-0.2.1-macos.dmg` (drag QScreenRec to Applications) | Xcode command-line tools |
+| Linux | `qscreenrec-0.2.1-linux-x86_64.deb`, `.rpm` (if `rpmbuild` exists), portable `.tar.gz` | `dpkg`, optionally `rpm` |
 
 The Linux packages install to `/opt/qscreenrec` and add `/usr/bin/qscreenrec` plus a menu entry.
 
 **All three at once:** `.github/workflows/installers.yml` builds every installer on GitHub's
 Windows, macOS and Linux runners. Push the project to a GitHub repository, then run *Installers*
-from the Actions tab (files appear as artifacts) or push a tag such as `v0.2.0` (files are
+from the Actions tab (files appear as artifacts) or push a tag such as `v0.2.1` (files are
 attached to a release).
 
 Signing is not set up: the macOS app is unsigned/un-notarized (first launch: right-click → Open,
@@ -104,6 +104,9 @@ loopback is silent when nothing plays) and late bursts are dropped.
 
 ## Changes
 
+- **0.2.1** – first version with installers built and published by the GitHub workflow; macOS
+  link fix (Qt 6.8 references the AGL framework that current Xcode SDKs no longer ship); CI uses
+  the `macos-latest` runner.
 - **0.2.0** – audio recording (system audio or input device); CPack installers for Windows, macOS
   and Linux plus a GitHub Actions workflow; H.264/AAC now chosen explicitly when available
   (0.1.0 left the video codec to Qt, which could pick HEVC); `--list` shows codecs and audio inputs.

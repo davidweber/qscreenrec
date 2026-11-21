@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 
 set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "Minimum macOS version")
 
-project(QScreenRec VERSION 0.2.0 LANGUAGES CXX)
+project(QScreenRec VERSION 0.2.1 LANGUAGES CXX)
 if(APPLE)
     enable_language(OBJCXX)
 endif()
