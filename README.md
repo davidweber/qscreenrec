@@ -1,4 +1,4 @@
-# QScreenRec 0.3.0
+# QScreenRec 0.3.1
 
 Cross-platform (Linux, macOS, Windows) screen recorder built on Qt 6 Widgets + Qt Multimedia.
 Records the entire screen, a dragged-out area of a screen, or a single window to a video file,
@@ -25,15 +25,15 @@ Run CPack in the build directory after building; it produces a self-contained pa
 
 | Platform | Output | Needs |
 |----------|--------|-------|
-| Windows | `qscreenrec-0.3.0-windows-x64.exe` (NSIS setup, Start-menu entry, uninstaller) + portable `.zip` | NSIS on PATH |
-| macOS | `qscreenrec-0.3.0-macos.dmg` (drag QScreenRec to Applications) | Xcode command-line tools |
-| Linux | `qscreenrec-0.3.0-linux-x86_64.deb`, `.rpm` (if `rpmbuild` exists), portable `.tar.gz` | `dpkg`, optionally `rpm` |
+| Windows | `qscreenrec-0.3.1-windows-x64.exe` (NSIS setup, Start-menu entry, uninstaller) + portable `.zip` | NSIS on PATH |
+| macOS | `qscreenrec-0.3.1-macos.dmg` (drag QScreenRec to Applications) | Xcode command-line tools |
+| Linux | `qscreenrec-0.3.1-linux-x86_64.deb`, `.rpm` (if `rpmbuild` exists), portable `.tar.gz` | `dpkg`, optionally `rpm` |
 
 The Linux packages install to `/opt/qscreenrec` and add `/usr/bin/qscreenrec` plus a menu entry.
 
 **All three at once:** `.github/workflows/installers.yml` builds every installer on GitHub's
 Windows, macOS and Linux runners. Push the project to a GitHub repository, then run *Installers*
-from the Actions tab (files appear as artifacts) or push a tag such as `v0.3.0` (files are
+from the Actions tab (files appear as artifacts) or push a tag such as `v0.3.1` (files are
 attached to a release).
 
 Signing is not set up: the macOS app is unsigned/un-notarized (first launch: right-click → Open,
@@ -76,8 +76,9 @@ One source per recording; system audio and a microphone are not mixed together.
   run, then restart the app. H.264 via VideoToolbox. On macOS 12 system audio is unavailable.
 - **Windows**: H.264 via Media Foundation / hardware encoders.
 - **Linux/X11**: window list needs `XDG_SESSION_TYPE=x11` (set by normal desktop sessions).
-  The video codec depends on the FFmpeg your Qt uses: H.264 if it has an H.264 encoder,
-  otherwise MPEG-4 Part 2 (what the stock Qt LGPL FFmpeg falls back to).
+  The video codec depends on your hardware: the official Qt has no software H.264 encoder, so
+  H.264 is only used when the GPU can encode it through VA-API. Otherwise recording falls back to
+  MPEG-4 Part 2, which VLC and mpv play but browsers and QuickTime do not.
 - **Linux/Wayland**: applications cannot grab the screen or list windows, so capture goes through
   the desktop's screen-sharing portal (xdg-desktop-portal + PipeWire). When recording starts the
   system shows its own dialog and you click the screen or window to share; the window list and
@@ -115,6 +116,10 @@ loopback is silent when nothing plays) and late bursts are dropped.
 
 ## Changes
 
+- **0.3.1** – when a video encoder cannot start (e.g. hardware H.264 through VA-API on a GPU
+  without encode support), recording automatically restarts with the next codec (H.264 → H.265 →
+  MPEG-4 → Motion JPEG) and remembers the choice; Linux runs through X11/XWayland by default, which
+  removes the missing "wayland" plugin warning.
 - **0.3.0** – Wayland support: screen, area and window capture through the desktop portal (the
   system picker selects the window); visual window picker (*Pick…*) on X11/Windows/macOS; untitled
   windows are listed; the area-selection overlay no longer turns the screen black under Wayland;

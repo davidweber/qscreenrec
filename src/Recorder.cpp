@@ -7,7 +7,9 @@
 #include <QAudioBuffer>
 #include <QAudioBufferInput>
 #include <QAudioInput>
+#include <QFile>
 #include <QImage>
+#include <QSettings>
 #include <QScreen>
 #include <QScreenCapture>
 #include <QUrl>
@@ -26,6 +28,8 @@ Recorder::Recorder(QObject *parent)
             this, &Recorder::durationChanged);
     connect(&m_recorder, &QMediaRecorder::errorOccurred, this,
             [this](QMediaRecorder::Error, const QString &text) {
+                if (retryWithNextCodec())
+                    return;
                 // Typically a container the available encoder cannot write a header for
                 // (e.g. software H.264 into Matroska with Qt 6.8's FFmpeg backend).
                 if (m_settings.fileFormat != QMediaFormat::MPEG4)
@@ -84,6 +88,82 @@ QString Recorder::suffixFor(QMediaFormat::FileFormat format)
     case QMediaFormat::AVI:       return QStringLiteral("avi");
     default:                      return QStringLiteral("mp4");
     }
+}
+
+QString Recorder::unusableCodecsKey(QMediaFormat::FileFormat format)
+{
+    return QStringLiteral("encoder/unusableVideoCodecs/%1").arg(int(format));
+}
+
+void Recorder::applyMediaFormat()
+{
+    using AC = QMediaFormat::AudioCodec;
+    QMediaFormat format(m_settings.fileFormat);
+    format.setVideoCodec(m_videoCandidates.value(m_candidateIndex, QMediaFormat::VideoCodec::Unspecified));
+
+    const bool webm = m_settings.fileFormat == QMediaFormat::WebM;
+    const QList<AC> wantedAudio = webm ? QList<AC>{ AC::Opus, AC::Vorbis }
+                                       : QList<AC>{ AC::AAC, AC::MP3, AC::Opus };
+    const auto audioCodecs = format.supportedAudioCodecs(QMediaFormat::Encode);
+    for (AC codec : wantedAudio) {
+        if (audioCodecs.contains(codec)) {
+            format.setAudioCodec(codec);
+            break;
+        }
+    }
+    format.resolveForEncoding(QMediaFormat::RequiresVideo);
+    m_recorder.setMediaFormat(format);
+}
+
+// Called when the recorder reports an error. Returns true if the error was an encoder that
+// could not start and another codec is left to try; recording then restarts with it.
+bool Recorder::retryWithNextCodec()
+{
+    if (!m_running || m_retrying || m_recorder.duration() > 0
+        || m_candidateIndex + 1 >= m_videoCandidates.size())
+        return false;
+
+    // Remember the failure so the next recording starts with a codec that works here.
+    QSettings settings;
+    const QString key = unusableCodecsKey(m_settings.fileFormat);
+    QVariantList unusable = settings.value(key).toList();
+    const int failed = int(m_videoCandidates.at(m_candidateIndex));
+    if (!unusable.contains(failed)) {
+        unusable.append(failed);
+        settings.setValue(key, unusable);
+    }
+    qInfo("QScreenRec: video encoder for %s could not start, trying %s",
+          qPrintable(QMediaFormat::videoCodecName(m_videoCandidates.at(m_candidateIndex))),
+          qPrintable(QMediaFormat::videoCodecName(m_videoCandidates.at(m_candidateIndex + 1))));
+
+    m_retrying = true;
+    ++m_candidateIndex;
+    // The recorder stops itself after an error; restart once it has (see onRecorderStateChanged).
+    QTimer::singleShot(0, this, [this] {
+        if (!m_retrying)
+            return;
+        if (m_recorder.recorderState() == QMediaRecorder::StoppedState)
+            restartRecording();
+        else
+            m_recorder.stop();
+    });
+    return true;
+}
+
+void Recorder::restartRecording()
+{
+    if (!m_retrying || !m_running)
+        return;
+    m_retrying = false;
+    QFile::remove(m_settings.outputPath);       // whatever the failed attempt left behind
+    m_lastFrameUs = -1;
+    m_recordStartUs = -1;
+    m_pauseStartUs = -1;
+    m_pausedTotalUs = 0;
+    m_audioFramesSent = 0;
+    applyMediaFormat();
+    m_recorder.setOutputLocation(QUrl::fromLocalFile(m_settings.outputPath));
+    m_recorder.record();
 }
 
 bool Recorder::isActive() const
@@ -220,32 +300,31 @@ bool Recorder::start(const Settings &settings)
     }
     }
 
-    // Prefer the most widely playable codecs the installed encoder set offers for this
-    // container (left to itself Qt may pick e.g. HEVC), then let Qt fill in anything missing.
-    QMediaFormat format(settings.fileFormat);
+    // Video codecs to try, most widely playable first. A codec Qt lists as supported can still
+    // fail to open (typically hardware H.264 through VA-API on a GPU or driver without encode
+    // support, with no software H.264 in Qt's FFmpeg), so recording falls back to the next one.
     using VC = QMediaFormat::VideoCodec;
-    using AC = QMediaFormat::AudioCodec;
     const bool webm = settings.fileFormat == QMediaFormat::WebM;
     const QList<VC> wantedVideo = webm ? QList<VC>{ VC::VP9, VC::VP8, VC::AV1 }
-                                       : QList<VC>{ VC::H264, VC::H265, VC::MPEG4 };
-    const QList<AC> wantedAudio = webm ? QList<AC>{ AC::Opus, AC::Vorbis }
-                                       : QList<AC>{ AC::AAC, AC::MP3, AC::Opus };
-    const auto videoCodecs = format.supportedVideoCodecs(QMediaFormat::Encode);
+                                       : QList<VC>{ VC::H264, VC::H265, VC::MPEG4, VC::MotionJPEG };
+    const auto available = QMediaFormat(settings.fileFormat).supportedVideoCodecs(QMediaFormat::Encode);
+    const QVariantList unusable = QSettings().value(unusableCodecsKey(settings.fileFormat)).toList();
+    m_videoCandidates.clear();
+    QList<VC> knownBad;
     for (VC codec : wantedVideo) {
-        if (videoCodecs.contains(codec)) {
-            format.setVideoCodec(codec);
-            break;
-        }
+        if (!available.contains(codec))
+            continue;
+        if (unusable.contains(int(codec)))
+            knownBad.append(codec);         // failed on this machine before: try it last
+        else
+            m_videoCandidates.append(codec);
     }
-    const auto audioCodecs = format.supportedAudioCodecs(QMediaFormat::Encode);
-    for (AC codec : wantedAudio) {
-        if (audioCodecs.contains(codec)) {
-            format.setAudioCodec(codec);
-            break;
-        }
-    }
-    format.resolveForEncoding(QMediaFormat::RequiresVideo);
-    m_recorder.setMediaFormat(format);
+    m_videoCandidates.append(knownBad);
+    if (m_videoCandidates.isEmpty())
+        m_videoCandidates.append(VC::Unspecified);      // let Qt choose
+    m_candidateIndex = 0;
+    m_retrying = false;
+    applyMediaFormat();
     m_recorder.setEncodingMode(QMediaRecorder::ConstantQualityEncoding);
     m_recorder.setQuality(settings.quality);
     m_recorder.setVideoFrameRate(settings.frameRate);
@@ -417,6 +496,10 @@ void Recorder::onRecorderStateChanged(QMediaRecorder::RecorderState state)
         emit pausedChanged(true);
         break;
     case QMediaRecorder::StoppedState:
+        if (m_retrying) {
+            QTimer::singleShot(0, this, &Recorder::restartRecording);
+            break;
+        }
         if (m_running) {
             m_running = false;
             const QString path = m_recorder.actualLocation().toLocalFile();

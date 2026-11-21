@@ -90,6 +90,10 @@ private:
     void fillAudioGap();
     void sendAudio(const QByteArray &samples);
     qint64 activeUs();
+    static QString unusableCodecsKey(QMediaFormat::FileFormat format);
+    void applyMediaFormat();
+    bool retryWithNextCodec();
+    void restartRecording();
     void onRecorderStateChanged(QMediaRecorder::RecorderState state);
     void fail(const QString &message);
     void teardown();
@@ -116,6 +120,9 @@ private:
     qint64 m_recordStartUs = -1;
     qint64 m_pauseStartUs = -1;
     qint64 m_pausedTotalUs = 0;
+    QList<QMediaFormat::VideoCodec> m_videoCandidates;
+    int m_candidateIndex = 0;
+    bool m_retrying = false;
     bool m_running = false;
     bool m_failed = false;
 };

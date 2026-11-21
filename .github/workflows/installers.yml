@@ -3,7 +3,7 @@
 #   macOS   : qscreenrec-<ver>-macos.dmg (universal arm64 + x86_64)
 #   Linux   : qscreenrec-<ver>-linux-x86_64.deb / .rpm / .tar.gz
 #
-# Run it from the Actions tab ("Run workflow"), or push a tag like v0.3.0 to also
+# Run it from the Actions tab ("Run workflow"), or push a tag like v0.3.1 to also
 # attach the files to a GitHub release.
 name: Installers
 

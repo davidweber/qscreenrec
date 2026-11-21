@@ -256,6 +256,14 @@ static int runHeadless(QApplication &app, const QCommandLineParser &cli)
 
 int main(int argc, char *argv[])
 {
+#if defined(Q_OS_LINUX)
+    // Run through X11 / XWayland unless told otherwise. The area overlay, the on-screen area
+    // frame and window placement rely on X11 semantics, and the bundled Qt ships no Wayland
+    // platform plugin (which otherwise logs a "could not find plugin" warning at startup).
+    // Screen contents are still captured natively on Wayland, through the desktop portal.
+    if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
+        qputenv("QT_QPA_PLATFORM", "xcb");
+#endif
     QApplication app(argc, argv);
     QCoreApplication::setOrganizationName(QStringLiteral("Archstone"));
     QCoreApplication::setApplicationName(QStringLiteral("QScreenRec"));
