@@ -106,7 +106,7 @@ loopback is silent when nothing plays) and late bursts are dropped.
 
 - **0.2.1** – first version with installers built and published by the GitHub workflow; macOS
   link fix (Qt 6.8 references the AGL framework that current Xcode SDKs no longer ship); CI uses
-  the `macos-latest` runner.
+  the `macos-latest` runner; the Windows installer bundles the MSVC runtime.
 - **0.2.0** – audio recording (system audio or input device); CPack installers for Windows, macOS
   and Linux plus a GitHub Actions workflow; H.264/AAC now chosen explicitly when available
   (0.1.0 left the video codec to Qt, which could pick HEVC); `--list` shows codecs and audio inputs.

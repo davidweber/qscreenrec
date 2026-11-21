@@ -96,6 +96,12 @@ endif()
 
 # --- Install: a self-contained tree (Qt libraries and plugins included) ------------------------
 include(GNUInstallDirs)
+if(WIN32)
+    # Bundle the MSVC runtime DLLs next to the executable so the installed app does not
+    # depend on a Visual C++ redistributable being present on the target machine.
+    set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION ${CMAKE_INSTALL_BINDIR})
+    include(InstallRequiredSystemLibraries)
+endif()
 install(TARGETS qscreenrec
     BUNDLE  DESTINATION .
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
