@@ -8,6 +8,8 @@
 #include <QCommandLineParser>
 #include <QFileInfo>
 #include <QPainter>
+#include <QPalette>
+#include <QStyleFactory>
 #include <QPixmap>
 #include <QScreen>
 #include <QTextStream>
@@ -30,6 +32,126 @@ static QIcon makeIcon()
         icon.addPixmap(pm);
     }
     return icon;
+}
+
+// Dark theme: Fusion + a dark palette for the standard controls, and a stylesheet that adds the
+// gradients (window background, cards, buttons). Selectors are scoped by object name / class
+// so helper windows such as the area-selection overlay stay untouched.
+static void applyTheme(QApplication &app)
+{
+    app.setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
+
+    QPalette p;
+    const QColor text(232, 236, 244), dim(140, 148, 165), base(24, 28, 38), panel(38, 44, 58);
+    p.setColor(QPalette::Window, QColor(28, 32, 44));
+    p.setColor(QPalette::WindowText, text);
+    p.setColor(QPalette::Base, base);
+    p.setColor(QPalette::AlternateBase, panel);
+    p.setColor(QPalette::Text, text);
+    p.setColor(QPalette::Button, panel);
+    p.setColor(QPalette::ButtonText, text);
+    p.setColor(QPalette::ToolTipBase, panel);
+    p.setColor(QPalette::ToolTipText, text);
+    p.setColor(QPalette::PlaceholderText, dim);
+    p.setColor(QPalette::Highlight, QColor(79, 124, 255));
+    p.setColor(QPalette::HighlightedText, Qt::white);
+    p.setColor(QPalette::Link, QColor(120, 170, 255));
+    for (auto role : { QPalette::WindowText, QPalette::Text, QPalette::ButtonText })
+        p.setColor(QPalette::Disabled, role, QColor(110, 116, 130));
+    app.setPalette(p);
+
+    app.setStyleSheet(QStringLiteral(R"(
+        QWidget#mainWindow, WindowPicker {
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                                        stop:0 #232a3d, stop:0.55 #1b2030, stop:1 #251d38);
+        }
+        QGroupBox {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                        stop:0 rgba(255,255,255,22), stop:1 rgba(255,255,255,8));
+            border: 1px solid rgba(255,255,255,28);
+            border-radius: 10px;
+            margin-top: 14px;
+            padding: 10px 8px 8px 8px;
+        }
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            left: 12px;
+            padding: 0 4px;
+            color: #9fb4ff;
+            font-weight: 600;
+        }
+        QPushButton {
+            color: #e8ecf4;
+            border: 1px solid rgba(255,255,255,40);
+            border-radius: 7px;
+            padding: 5px 14px;
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #475069, stop:1 #333a4e);
+        }
+        QPushButton:hover {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #56607d, stop:1 #3d455c);
+        }
+        QPushButton:pressed {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2c3244, stop:1 #3a4258);
+        }
+        QPushButton:disabled {
+            color: #6e7482;
+            border-color: rgba(255,255,255,18);
+            background: rgba(255,255,255,10);
+        }
+        QPushButton#recordButton {
+            font-weight: 600;
+            border: 1px solid #ff8f8f;
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #ff5f6d, stop:1 #c81d4e);
+        }
+        QPushButton#recordButton:hover {
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #ff7480, stop:1 #dc2a5c);
+        }
+        QPushButton#recordButton[recording="true"] {
+            border: 1px solid #7fb0ff;
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #4f7cff, stop:1 #7a3cf0);
+        }
+        QPushButton#recordButton[recording="true"]:hover {
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #6690ff, stop:1 #8c52f5);
+        }
+        QRadioButton::indicator {
+            width: 13px; height: 13px;
+            border-radius: 7px;
+            border: 1px solid #8792b0;
+            background: #171b26;
+        }
+        QRadioButton::indicator:hover { border-color: #b9c6ff; }
+        QRadioButton::indicator:checked {
+            border: 1px solid #b9c6ff;
+            background: qradialgradient(cx:0.5, cy:0.5, radius:0.5, fx:0.5, fy:0.5,
+                                        stop:0 #ffffff, stop:0.38 #ffffff, stop:0.45 #4f7cff, stop:1 #7a3cf0);
+        }
+        QRadioButton::indicator:disabled { border-color: #4a5063; }
+        QCheckBox::indicator {
+            width: 13px; height: 13px;
+            border-radius: 3px;
+            border: 1px solid #8792b0;
+            background: #171b26;
+        }
+        QCheckBox::indicator:hover { border-color: #b9c6ff; }
+        QCheckBox::indicator:checked {
+            border: 1px solid #b9c6ff;
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #4f7cff, stop:1 #7a3cf0);
+        }
+        QCheckBox::indicator:disabled { border-color: #4a5063; }
+        QToolButton#windowTile {
+            color: #e8ecf4;
+            border: 1px solid rgba(255,255,255,30);
+            border-radius: 8px;
+            padding: 6px;
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                        stop:0 rgba(255,255,255,24), stop:1 rgba(255,255,255,8));
+        }
+        QToolButton#windowTile:hover {
+            border: 1px solid #7fb0ff;
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                        stop:0 rgba(120,160,255,70), stop:1 rgba(120,160,255,25));
+        }
+    )"));
 }
 
 // Command-line recording: qscreenrec -o out.mp4 [--region x,y,w,h | --window TITLE] -d 10
@@ -72,6 +194,11 @@ static int runHeadless(QApplication &app, const QCommandLineParser &cli)
         }
         s.mode = Recorder::Mode::Region;
         s.region = QRect(parts[0].toInt(), parts[1].toInt(), parts[2].toInt(), parts[3].toInt());
+    } else if (cli.isSet("pipewire-node")) {
+        s.mode = Recorder::Mode::Window;
+        s.pipeWireNode = cli.value("pipewire-node").toUInt();
+    } else if (cli.isSet("window") && Recorder::captureNeedsPortal()) {
+        s.mode = Recorder::Mode::Window;        // Wayland: the desktop's picker chooses the window
     } else if (cli.isSet("window")) {
         s.mode = Recorder::Mode::Window;
         const QString wanted = cli.value("window");
@@ -99,10 +226,17 @@ static int runHeadless(QApplication &app, const QCommandLineParser &cli)
         return 2;
     }
 
+    s.viaPortal = Recorder::captureNeedsPortal();
+
     Recorder recorder;
     int exitCode = 0;
     QObject::connect(&recorder, &Recorder::finished, &app, [&](const QString &path) {
         out << "Saved " << path << Qt::endl;
+        app.quit();
+    });
+    QObject::connect(&recorder, &Recorder::cancelled, &app, [&] {
+        err << "Cancelled" << Qt::endl;
+        exitCode = 1;
         app.quit();
     });
     QObject::connect(&recorder, &Recorder::failed, &app, [&](const QString &message) {
@@ -127,7 +261,8 @@ int main(int argc, char *argv[])
     QCoreApplication::setApplicationName(QStringLiteral("QScreenRec"));
     QCoreApplication::setApplicationVersion(QStringLiteral(APP_VERSION));
     QApplication::setWindowIcon(makeIcon());
-    QApplication::setQuitOnLastWindowClosed(false);   // the window hides while selecting / recording
+    QApplication::setQuitOnLastWindowClosed(false);
+    applyTheme(app);   // the window hides while selecting / recording
 
     QCommandLineParser cli;
     cli.setApplicationDescription(QStringLiteral(
@@ -145,10 +280,18 @@ int main(int argc, char *argv[])
         { { "a", "audio" }, "Audio with --output: none (default), system (what you hear) or mic (default input).", "source", "none" },
         { { "l", "list" }, "List screens and capturable windows, then exit." },
     });
+    QCommandLineOption pipeWireNode(QStringLiteral("pipewire-node"),
+                                    QStringLiteral("Test hook: record this PipeWire video node."),
+                                    QStringLiteral("id"));
+    pipeWireNode.setFlags(QCommandLineOption::HiddenFromHelp);
+    cli.addOption(pipeWireNode);
     cli.process(app);
 
     if (cli.isSet("list")) {
         QTextStream out(stdout);
+        out << "Session: Qt platform " << QGuiApplication::platformName()
+            << ", XDG_SESSION_TYPE=" << qEnvironmentVariable("XDG_SESSION_TYPE", QStringLiteral("(unset)"))
+            << ", capture via " << (Recorder::captureNeedsPortal() ? "desktop portal (system picker)" : "Qt") << "\n";
         out << "Screens:\n";
         const auto screens = QGuiApplication::screens();
         for (int i = 0; i < screens.size(); ++i) {

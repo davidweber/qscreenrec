@@ -36,6 +36,7 @@ private:
 
     void refreshScreens();
     void refreshWindows();
+    void pickWindow();
     void refreshAudioSources();
     bool ensureMicrophonePermission();
     void selectRegion();
@@ -70,6 +71,8 @@ private:
     QLabel *m_regionLabel = nullptr;
     QComboBox *m_windowCombo = nullptr;
     QPushButton *m_refreshWindowsButton = nullptr;
+    QPushButton *m_pickWindowButton = nullptr;
+    bool m_viaPortal = false;
     QComboBox *m_audioCombo = nullptr;
     QLineEdit *m_folderEdit = nullptr;
     QComboBox *m_formatCombo = nullptr;

@@ -1,5 +1,8 @@
 #include "Recorder.h"
 #include "audio/SystemAudio.h"
+#ifdef HAVE_PORTAL_CAPTURE
+#  include "PortalCapture.h"
+#endif
 
 #include <QAudioBuffer>
 #include <QAudioBufferInput>
@@ -62,6 +65,16 @@ QList<QMediaFormat::FileFormat> Recorder::supportedFileFormats()
     return result;
 }
 
+bool Recorder::captureNeedsPortal()
+{
+#ifdef HAVE_PORTAL_CAPTURE
+    return PortalCapture::isWaylandSession() && PortalCapture::isAvailable(PortalCapture::Window)
+           && PortalCapture::isAvailable(PortalCapture::Monitor);
+#else
+    return false;
+#endif
+}
+
 QString Recorder::suffixFor(QMediaFormat::FileFormat format)
 {
     switch (format) {
@@ -101,15 +114,40 @@ bool Recorder::start(const Settings &settings)
         fail(text.isEmpty() ? what : what + QStringLiteral(": ") + text);
     };
 
-    switch (settings.mode) {
+    if (settings.mode == Mode::Region && settings.region.isEmpty()) {
+        fail(tr("No area has been selected."));
+        return false;
+    }
+
+    bool viaPortal = false;
+#ifdef HAVE_PORTAL_CAPTURE
+    viaPortal = settings.viaPortal || settings.pipeWireNode != 0;
+    if (viaPortal) {
+        m_portal = new PortalCapture(this);
+        m_portal->setMaximumFrameRate(settings.frameRate);
+        connect(m_portal, &PortalCapture::frame, this, &Recorder::onFrame);
+        connect(m_portal, &PortalCapture::failed, this, &Recorder::fail);
+        // Recording starts only once the user has made a choice in the system dialog and
+        // frames are flowing, so time spent there is not part of the file.
+        connect(m_portal, &PortalCapture::started, this, [this] {
+            if (m_running && m_recorder.recorderState() == QMediaRecorder::StoppedState)
+                m_recorder.record();
+        });
+        connect(m_portal, &PortalCapture::cancelled, this, [this] {
+            if (!m_running)
+                return;
+            m_running = false;
+            teardown();
+            emit cancelled();
+        });
+    }
+#endif
+
+    switch (viaPortal ? Mode(-1) : settings.mode) {
     case Mode::FullScreen:
     case Mode::Region: {
         if (!settings.screen) {
             fail(tr("The selected screen is no longer available."));
-            return false;
-        }
-        if (settings.mode == Mode::Region && settings.region.isEmpty()) {
-            fail(tr("No area has been selected."));
             return false;
         }
         m_screenCapture = new QScreenCapture(this);
@@ -135,6 +173,8 @@ bool Recorder::start(const Settings &settings)
         m_grabSession.setWindowCapture(m_windowCapture);
         break;
     }
+    default:    // capturing through the desktop portal
+        break;
     }
 
     m_frameInput = new QVideoFrameInput(this);
@@ -220,6 +260,16 @@ bool Recorder::start(const Settings &settings)
     if (m_failed)            // capture source refused to start (e.g. no permission)
         return false;
 
+#ifdef HAVE_PORTAL_CAPTURE
+    if (m_portal) {
+        if (settings.pipeWireNode != 0)
+            m_portal->startOnNode(settings.pipeWireNode);
+        else
+            m_portal->start(settings.mode == Mode::Window ? PortalCapture::Window     // shows the
+                                                          : PortalCapture::Monitor);  // system picker
+        return !m_failed;
+    }
+#endif
     m_recorder.record();
     return !m_failed;
 }
@@ -229,9 +279,10 @@ void Recorder::stop()
     if (!m_running)
         return;
     if (m_recorder.recorderState() == QMediaRecorder::StoppedState) {
-        // Recorder never got going; nothing to finalize.
+        // Recorder never got going (e.g. still waiting in the system window picker).
         m_running = false;
         teardown();
+        emit cancelled();
         return;
     }
     m_recorder.stop();      // finished() is emitted once the file has been finalized
@@ -396,6 +447,14 @@ void Recorder::fail(const QString &message)
 void Recorder::teardown()
 {
     m_audioGapTimer.stop();
+#ifdef HAVE_PORTAL_CAPTURE
+    if (m_portal) {
+        m_portal->disconnect(this);
+        m_portal->stop();
+        m_portal->deleteLater();
+        m_portal = nullptr;
+    }
+#endif
     if (m_systemAudio) {
         m_systemAudio->stop();      // joins the capture thread; queued buffers are ignored
         m_systemAudio.reset();

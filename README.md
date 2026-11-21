@@ -1,4 +1,4 @@
-# QScreenRec 0.2.1
+# QScreenRec 0.3.0
 
 Cross-platform (Linux, macOS, Windows) screen recorder built on Qt 6 Widgets + Qt Multimedia.
 Records the entire screen, a dragged-out area of a screen, or a single window to a video file,
@@ -8,7 +8,8 @@ with system audio ("what you hear") or any audio input device.
 
 - Qt **6.8 or newer** with the **Qt Multimedia** module (FFmpeg backend, the default)
 - CMake 3.21+, a C++17 compiler
-- Linux: `libpulse-dev` (system-audio capture; the build still works without it, minus that feature)
+- Linux: `libpulse-dev` (system-audio capture) and `libpipewire-0.3-dev` (capture on Wayland);
+  the build still works without either, minus that feature
 
 ## Build
 
@@ -24,15 +25,15 @@ Run CPack in the build directory after building; it produces a self-contained pa
 
 | Platform | Output | Needs |
 |----------|--------|-------|
-| Windows | `qscreenrec-0.2.1-windows-x64.exe` (NSIS setup, Start-menu entry, uninstaller) + portable `.zip` | NSIS on PATH |
-| macOS | `qscreenrec-0.2.1-macos.dmg` (drag QScreenRec to Applications) | Xcode command-line tools |
-| Linux | `qscreenrec-0.2.1-linux-x86_64.deb`, `.rpm` (if `rpmbuild` exists), portable `.tar.gz` | `dpkg`, optionally `rpm` |
+| Windows | `qscreenrec-0.3.0-windows-x64.exe` (NSIS setup, Start-menu entry, uninstaller) + portable `.zip` | NSIS on PATH |
+| macOS | `qscreenrec-0.3.0-macos.dmg` (drag QScreenRec to Applications) | Xcode command-line tools |
+| Linux | `qscreenrec-0.3.0-linux-x86_64.deb`, `.rpm` (if `rpmbuild` exists), portable `.tar.gz` | `dpkg`, optionally `rpm` |
 
 The Linux packages install to `/opt/qscreenrec` and add `/usr/bin/qscreenrec` plus a menu entry.
 
 **All three at once:** `.github/workflows/installers.yml` builds every installer on GitHub's
 Windows, macOS and Linux runners. Push the project to a GitHub repository, then run *Installers*
-from the Actions tab (files appear as artifacts) or push a tag such as `v0.2.1` (files are
+from the Actions tab (files appear as artifacts) or push a tag such as `v0.3.0` (files are
 attached to a release).
 
 Signing is not set up: the macOS app is unsigned/un-notarized (first launch: right-click → Open,
@@ -41,7 +42,8 @@ Before publishing, set the maintainer address in `CPACK_PACKAGE_CONTACT` (CMakeL
 
 ## Use
 
-1. Choose **Entire screen**, **Area of the screen** (click *Select area…* and drag), or **Window**.
+1. Choose **Entire screen**, **Area of the screen** (click *Select area…* and drag), or **Window**
+   (choose from the list, or click *Pick…* and click the window's live preview).
 2. Choose the **Audio** source: system audio, no audio, or an input device (microphone, line-in).
 3. Pick the folder, container format, quality and frame rate.
 4. **Record** (Ctrl+R). The window minimizes after the start delay; stop from the tray icon
@@ -76,14 +78,21 @@ One source per recording; system audio and a microphone are not mixed together.
 - **Linux/X11**: window list needs `XDG_SESSION_TYPE=x11` (set by normal desktop sessions).
   The video codec depends on the FFmpeg your Qt uses: H.264 if it has an H.264 encoder,
   otherwise MPEG-4 Part 2 (what the stock Qt LGPL FFmpeg falls back to).
-- **Linux/Wayland**: screen capture goes through the xdg-desktop-portal dialog; Qt offers no
-  window capture there (the window list is empty) and the red area frame is not shown.
+- **Linux/Wayland**: applications cannot grab the screen or list windows, so capture goes through
+  the desktop's screen-sharing portal (xdg-desktop-portal + PipeWire). When recording starts the
+  system shows its own dialog and you click the screen or window to share; the window list and
+  *Pick…* are therefore not shown. For area recording, pick the same screen you selected the area
+  on. `qscreenrec --list` prints which path is in use.
+- **Linux, software H.264**: if your Qt's FFmpeg uses libx264 (distribution Qt packages), Qt encodes
+  screen content as H.264 High 4:4:4, which some players (QuickTime, browsers) refuse. The
+  installers built by the workflow use the official Qt and are not affected.
 - **MKV**: Qt 6.8's FFmpeg backend cannot write software-encoded H.264 into Matroska (the
   recording fails to start with a message suggesting MP4). MP4 is the safe default.
 
 ## Design
 
-    QScreenCapture / QWindowCapture ─▶ QVideoSink ─▶ Recorder::onFrame ─▶ QVideoFrameInput ─┐
+    QScreenCapture / QWindowCapture ─▶ QVideoSink ─┐
+    PortalCapture (Wayland: portal + PipeWire) ────┴▶ Recorder::onFrame ─▶ QVideoFrameInput ─┐
     SystemAudio backend ─▶ Recorder::onSystemAudio ─▶ QAudioBufferInput ────────────────────┼▶ QMediaRecorder
     QAudioInput (input device) ─────────────────────────────────────────────────────────────┘
 
@@ -97,13 +106,19 @@ loopback is silent when nothing plays) and late bursts are dropped.
 | `src/Recorder.*` | capture pipeline, A/V clock, encoder settings |
 | `src/audio/SystemAudio.h` | Qt-free interface for system-audio capture |
 | `src/audio/SystemAudio_{pulse,wasapi}.cpp`, `SystemAudio_mac.mm` | per-platform backends (`_none.cpp` = stub) |
+| `src/PortalCapture.*` | Linux/Wayland capture: ScreenCast portal (D-Bus) and PipeWire video stream |
+| `src/WindowPicker.*` | window chooser with live thumbnails |
 | `src/RegionSelector.*` | drag-to-select overlay and the on-screen area frame |
 | `src/MainWindow.*` | UI, countdown, tray icon, settings |
-| `src/main.cpp` | entry point and command-line mode |
+| `src/main.cpp` | entry point, dark gradient theme, command-line mode |
 | `packaging/` | icons, macOS Info.plist, Windows resource file, Linux desktop entry and package scripts |
 
 ## Changes
 
+- **0.3.0** – Wayland support: screen, area and window capture through the desktop portal (the
+  system picker selects the window); visual window picker (*Pick…*) on X11/Windows/macOS; untitled
+  windows are listed; the area-selection overlay no longer turns the screen black under Wayland;
+  dark gradient theme.
 - **0.2.1** – first version with installers built and published by the GitHub workflow; macOS
   link fix (Qt 6.8 references the AGL framework that current Xcode SDKs no longer ship); CI uses
   the `macos-latest` runner; the Windows installer bundles the MSVC runtime.

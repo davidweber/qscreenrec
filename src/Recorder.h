@@ -15,6 +15,7 @@
 
 #include <memory>
 
+class PortalCapture;
 class QAudioBufferInput;
 class QAudioInput;
 class QScreen;
@@ -46,6 +47,8 @@ public:
         QPointer<QScreen> screen;          // FullScreen / Region
         QRect region;                      // Region: logical pixels, relative to the screen's top-left
         QCapturableWindow window;          // Window
+        bool viaPortal = false;            // Wayland: the desktop's own picker chooses the screen/window
+        quint32 pipeWireNode = 0;          // test hook: capture this PipeWire node instead
         QString outputPath;
         QMediaFormat::FileFormat fileFormat = QMediaFormat::MPEG4;
         QMediaRecorder::Quality quality = QMediaRecorder::HighQuality;
@@ -68,11 +71,16 @@ public:
     static QList<QMediaFormat::FileFormat> supportedFileFormats();
     static QString suffixFor(QMediaFormat::FileFormat format);
 
+    // True on Linux Wayland sessions with a screen-sharing portal: applications cannot grab the
+    // screen or list windows there, so capture goes through the desktop's own picker dialog.
+    static bool captureNeedsPortal();
+
 signals:
     void started();
     void pausedChanged(bool paused);
     void durationChanged(qint64 milliseconds);
     void finished(const QString &filePath);
+    void cancelled();                   // stopped before anything was recorded
     void failed(const QString &message);
 
 private:
@@ -94,6 +102,7 @@ private:
     QScreenCapture *m_screenCapture = nullptr;
     QWindowCapture *m_windowCapture = nullptr;
     QVideoFrameInput *m_frameInput = nullptr;
+    PortalCapture *m_portal = nullptr;
 
     QAudioInput *m_audioInput = nullptr;
     QAudioBufferInput *m_audioBufferInput = nullptr;

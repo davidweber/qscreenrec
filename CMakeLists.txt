@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 
 set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "Minimum macOS version")
 
-project(QScreenRec VERSION 0.2.1 LANGUAGES CXX)
+project(QScreenRec VERSION 0.3.0 LANGUAGES CXX)
 if(APPLE)
     enable_language(OBJCXX)
 endif()
@@ -30,6 +30,7 @@ set(APP_SOURCES
     src/MainWindow.h        src/MainWindow.cpp
     src/Recorder.h          src/Recorder.cpp
     src/RegionSelector.h    src/RegionSelector.cpp
+    src/WindowPicker.h      src/WindowPicker.cpp
     src/audio/SystemAudio.h
 )
 
@@ -44,6 +45,18 @@ else()
     find_package(PkgConfig QUIET)
     if(PkgConfig_FOUND)
         pkg_check_modules(PULSE IMPORTED_TARGET libpulse)
+    endif()
+    # Window capture on Wayland goes through the desktop portal + PipeWire (optional).
+    find_package(Qt6 QUIET COMPONENTS DBus)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(PIPEWIRE IMPORTED_TARGET libpipewire-0.3)
+    endif()
+    if(Qt6DBus_FOUND AND PIPEWIRE_FOUND)
+        set(HAVE_PORTAL_CAPTURE ON)
+        list(APPEND APP_SOURCES src/PortalCapture.h src/PortalCapture.cpp)
+    else()
+        message(WARNING "Qt6 DBus and/or libpipewire-0.3 not found (install libpipewire-0.3-dev): "
+                        "building without window capture on Wayland.")
     endif()
     if(PULSE_FOUND)
         list(APPEND APP_SOURCES src/audio/SystemAudio_pulse.cpp)
@@ -68,6 +81,10 @@ elseif(APPLE)
         "-weak_framework ScreenCaptureKit" "-framework CoreMedia" "-framework Foundation")
 elseif(PULSE_FOUND)
     target_link_libraries(qscreenrec PRIVATE PkgConfig::PULSE)
+endif()
+if(HAVE_PORTAL_CAPTURE)
+    target_compile_definitions(qscreenrec PRIVATE HAVE_PORTAL_CAPTURE)
+    target_link_libraries(qscreenrec PRIVATE Qt6::DBus PkgConfig::PIPEWIRE)
 endif()
 if(UNIX AND NOT APPLE)
     # Classic DT_RPATH instead of DT_RUNPATH: unlike RUNPATH it also applies to the libraries
@@ -156,7 +173,7 @@ else()
     set(CPACK_PACKAGING_INSTALL_PREFIX "/opt/qscreenrec")
     set(CPACK_DEBIAN_PACKAGE_SECTION "video")
     set(CPACK_DEBIAN_PACKAGE_DEPENDS
-        "libc6, libpulse0, libgl1, libegl1, libfontconfig1, libxkbcommon-x11-0, libxcb-cursor0, libxcb-icccm4, libxcb-image0, libxcb-keysyms1, libxcb-render-util0, libxcb-shape0, libxcb-xkb1")
+        "libc6, libpulse0, libpipewire-0.3-0 | libpipewire-0.3-0t64, libgl1, libegl1, libfontconfig1, libxkbcommon-x11-0, libxcb-cursor0, libxcb-icccm4, libxcb-image0, libxcb-keysyms1, libxcb-render-util0, libxcb-shape0, libxcb-xkb1")
     set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
         "${CMAKE_CURRENT_SOURCE_DIR}/packaging/linux/postinst;${CMAKE_CURRENT_SOURCE_DIR}/packaging/linux/prerm")
     set(CPACK_RPM_PACKAGE_LICENSE "Proprietary")

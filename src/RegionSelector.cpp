@@ -15,6 +15,28 @@ bool isWayland()
 {
     return QGuiApplication::platformName().startsWith(QLatin1String("wayland"));
 }
+
+bool isWaylandSession()
+{
+    return isWayland() || !qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")
+           || qEnvironmentVariable("XDG_SESSION_TYPE").compare(QLatin1String("wayland"), Qt::CaseInsensitive) == 0;
+}
+
+// True if the screenshot is missing or a single flat colour (what a failed grab looks like).
+bool isBlank(const QPixmap &pixmap)
+{
+    if (pixmap.isNull())
+        return true;
+    const QImage image = pixmap.toImage();
+    const QRgb first = image.pixel(0, 0);
+    for (int y = 0; y < image.height(); y += qMax(1, image.height() / 40)) {
+        for (int x = 0; x < image.width(); x += qMax(1, image.width() / 40)) {
+            if (image.pixel(x, y) != first)
+                return false;
+        }
+    }
+    return true;
+}
 }
 
 RegionSelector::RegionSelector(QScreen *screen, const QRect &initial, QWidget *parent)
@@ -31,11 +53,17 @@ RegionSelector::RegionSelector(QScreen *screen, const QRect &initial, QWidget *p
 
 void RegionSelector::begin()
 {
-    if (QGuiApplication::platformName() == QLatin1String("xcb")) {
-        // X11 only has translucent windows when a compositor is running, so show a frozen
-        // screenshot of the screen instead of relying on it.
-        m_snapshot = m_screen->grabWindow(0);
-        setAttribute(Qt::WA_TranslucentBackground, false);
+    // The overlay is normally a translucent window. Plain X11 without a compositing manager
+    // has no translucency (the overlay would be solid black), so there a frozen screenshot is
+    // shown instead. Under a Wayland session (including X11 apps running through XWayland)
+    // the compositor always provides translucency, and X11 screenshots come back black, so
+    // the screenshot is only used when it actually contains something.
+    if (QGuiApplication::platformName() == QLatin1String("xcb") && !isWaylandSession()) {
+        const QPixmap shot = m_screen->grabWindow(0);
+        if (!isBlank(shot)) {
+            m_snapshot = shot;
+            setAttribute(Qt::WA_TranslucentBackground, false);
+        }
     }
     if (isWayland()) {
         // Wayland clients cannot position themselves; ask the compositor for full screen instead.

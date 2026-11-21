@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 #include "RegionSelector.h"
+#include "WindowPicker.h"
 #include "audio/SystemAudio.h"
 
 #include <QAudioDevice>
@@ -27,6 +28,7 @@
 #include <QShortcut>
 #include <QSpinBox>
 #include <QStandardPaths>
+#include <QStyle>
 #include <QSystemTrayIcon>
 #include <QUrl>
 #if QT_CONFIG(permissions)
@@ -49,7 +51,9 @@ QString formatDuration(qint64 ms)
 MainWindow::MainWindow(QWidget *parent)
     : QWidget(parent)
 {
+    setObjectName(QStringLiteral("mainWindow"));
     setWindowTitle(QStringLiteral("QScreenRec %1").arg(QStringLiteral(APP_VERSION)));
+    m_viaPortal = Recorder::captureNeedsPortal();
     buildUi();
     refreshScreens();
     refreshWindows();
@@ -63,6 +67,12 @@ MainWindow::MainWindow(QWidget *parent)
     connect(&m_recorder, &Recorder::pausedChanged, this, &MainWindow::updateUiState);
     connect(&m_recorder, &Recorder::finished, this, &MainWindow::onFinished);
     connect(&m_recorder, &Recorder::failed, this, &MainWindow::onFailed);
+    connect(&m_recorder, &Recorder::cancelled, this, [this] {
+        delete m_regionFrame;
+        restoreWindow();
+        m_statusLabel->setText(tr("Cancelled"));
+        updateUiState();
+    });
     connect(&m_recorder, &Recorder::durationChanged, this, [this](qint64 ms) {
         m_lastDurationMs = ms;
         updateUiState();
@@ -103,6 +113,9 @@ MainWindow::MainWindow(QWidget *parent)
     }
 
     updateUiState();
+    if (m_viaPortal)
+        m_statusLabel->setText(tr("Ready — on Wayland the system asks which screen or window to share "
+                                  "when recording starts."));
 }
 
 MainWindow::~MainWindow()
@@ -137,6 +150,9 @@ void MainWindow::buildUi()
     m_windowCombo = new QComboBox;
     m_windowCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     m_windowCombo->setMinimumContentsLength(28);
+    m_pickWindowButton = new QPushButton(tr("Pick…"));
+    m_pickWindowButton->setToolTip(tr("Choose the window from live previews"));
+    connect(m_pickWindowButton, &QPushButton::clicked, this, &MainWindow::pickWindow);
     m_refreshWindowsButton = new QPushButton(tr("Refresh"));
     connect(m_refreshWindowsButton, &QPushButton::clicked, this, &MainWindow::refreshWindows);
 
@@ -152,6 +168,7 @@ void MainWindow::buildUi()
 
     auto *windowRow = new QHBoxLayout;
     windowRow->addWidget(m_windowCombo, 1);
+    windowRow->addWidget(m_pickWindowButton);
     windowRow->addWidget(m_refreshWindowsButton);
 
     m_audioCombo = new QComboBox;
@@ -214,6 +231,7 @@ void MainWindow::buildUi()
 
     // --- Controls -----------------------------------------------------------------------
     m_recordButton = new QPushButton;
+    m_recordButton->setObjectName(QStringLiteral("recordButton"));
     m_recordButton->setMinimumHeight(36);
     m_recordButton->setDefault(true);
     m_pauseButton = new QPushButton;
@@ -303,17 +321,48 @@ void MainWindow::refreshWindows()
     const QString previous = m_windowCombo->currentText();
     m_windows.clear();
     m_windowCombo->clear();
-    const auto windows = QWindowCapture::capturableWindows();
-    for (const QCapturableWindow &w : windows) {
-        if (!w.isValid() || w.description().trimmed().isEmpty())
-            continue;
-        m_windows.append(w);
-        m_windowCombo->addItem(w.description());
+    if (m_viaPortal) {
+        // Wayland: applications cannot list or grab other windows. The desktop shows its own
+        // picker when recording starts and the user clicks the window there.
+        m_windowCombo->addItem(tr("You choose it in the system dialog when recording starts"));
+        updateUiState();
+        return;
     }
+    // Titled windows first, then the untitled ones (still pickable from their previews).
+    const auto windows = QWindowCapture::capturableWindows();
+    for (int pass = 0; pass < 2; ++pass) {
+        for (const QCapturableWindow &w : windows) {
+            const QString title = w.description().trimmed();
+            if (!w.isValid() || title == windowTitle() || title.isEmpty() != (pass == 1))
+                continue;
+            m_windows.append(w);
+            m_windowCombo->addItem(title.isEmpty() ? tr("(untitled window)") : title);
+        }
+    }
+    if (m_windows.isEmpty())
+        m_windowCombo->addItem(tr("No capturable windows in this session"));
     const int i = m_windowCombo->findText(previous);
     if (i >= 0)
         m_windowCombo->setCurrentIndex(i);
     updateUiState();
+}
+
+void MainWindow::pickWindow()
+{
+    refreshWindows();
+    if (m_windows.isEmpty())
+        return;
+    WindowPicker picker(m_windows, this);
+    if (picker.exec() != QDialog::Accepted)
+        return;
+    const QCapturableWindow chosen = picker.selectedWindow();
+    for (int i = 0; i < m_windows.size(); ++i) {
+        if (m_windows.at(i) == chosen) {
+            m_windowCombo->setCurrentIndex(i);
+            m_windowRadio->setChecked(true);
+            break;
+        }
+    }
 }
 
 // Item data: "system", "none", or "device:<id>" for an audio input device.
@@ -454,8 +503,9 @@ void MainWindow::beginCountdown()
         selectRegion();
         return;
     }
-    if (mode() == Recorder::Mode::Window && m_windowCombo->currentIndex() < 0) {
-        onFailed(tr("No window selected. Click Refresh and pick one."));
+    if (mode() == Recorder::Mode::Window && !m_viaPortal
+        && m_windows.value(m_windowCombo->currentIndex()).isValid() == false) {
+        onFailed(tr("No window selected. Click Pick… or Refresh and choose one."));
         return;
     }
     if (m_audioCombo->currentData().toString().startsWith(QLatin1String("device:"))
@@ -491,6 +541,7 @@ void MainWindow::startRecording()
     s.mode = mode();
     s.screen = selectedScreen();
     s.region = m_region;
+    s.viaPortal = m_viaPortal;
     if (s.mode == Recorder::Mode::Window)
         s.window = m_windows.value(m_windowCombo->currentIndex());
     s.outputPath = nextOutputPath();
@@ -567,8 +618,12 @@ void MainWindow::updateUiState()
     m_screenCombo->setEnabled(!busy && m != Recorder::Mode::Window);
     m_selectRegionButton->setEnabled(!busy && m == Recorder::Mode::Region);
     m_regionLabel->setEnabled(m == Recorder::Mode::Region);
-    m_windowCombo->setEnabled(!busy && m == Recorder::Mode::Window);
-    m_refreshWindowsButton->setEnabled(!busy && m == Recorder::Mode::Window);
+    const bool listWindows = !busy && m == Recorder::Mode::Window && !m_viaPortal;
+    m_windowCombo->setEnabled(listWindows && !m_windows.isEmpty());
+    m_pickWindowButton->setEnabled(!busy && !m_viaPortal);   // picking switches to Window mode
+    m_refreshWindowsButton->setEnabled(listWindows);
+    m_pickWindowButton->setVisible(!m_viaPortal);
+    m_refreshWindowsButton->setVisible(!m_viaPortal);
 
     if (m_region.isEmpty()) {
         m_regionLabel->setText(tr("none selected"));
@@ -579,6 +634,12 @@ void MainWindow::updateUiState()
     }
 
     m_recordButton->setText(pending ? tr("Cancel") : busy ? tr("■  Stop") : tr("●  Record"));
+    // Restyle when the state changes (the stylesheet keys off this property).
+    if (m_recordButton->property("recording").toBool() != busy) {
+        m_recordButton->setProperty("recording", busy);
+        m_recordButton->style()->unpolish(m_recordButton);
+        m_recordButton->style()->polish(m_recordButton);
+    }
     m_pauseButton->setEnabled(m_recorder.isActive());
     m_pauseButton->setText(m_recorder.isPaused() ? tr("Resume") : tr("Pause"));
     if (m_recorder.isActive()) {
