@@ -28,8 +28,8 @@ Recorder::Recorder(QObject *parent)
             this, &Recorder::durationChanged);
     connect(&m_recorder, &QMediaRecorder::errorOccurred, this,
             [this](QMediaRecorder::Error, const QString &text) {
-                if (retryWithNextCodec())
-                    return;
+                if (m_retrying || retryWithNextCodec())
+                    return;     // one failed start can raise several errors; the retry covers them
                 // Typically a container the available encoder cannot write a header for
                 // (e.g. software H.264 into Matroska with Qt 6.8's FFmpeg backend).
                 if (m_settings.fileFormat != QMediaFormat::MPEG4)
@@ -119,7 +119,10 @@ void Recorder::applyMediaFormat()
 // could not start and another codec is left to try; recording then restarts with it.
 bool Recorder::retryWithNextCodec()
 {
-    if (!m_running || m_retrying || m_recorder.duration() > 0
+    // "Could not start" = an error within the first seconds of an attempt. (The recorder's
+    // duration is no guide: the audio encoder may already have produced output by the time
+    // the video encoder reports that it failed to open.)
+    if (!m_running || !m_attemptClock.isValid() || m_attemptClock.elapsed() > 5000
         || m_candidateIndex + 1 >= m_videoCandidates.size())
         return false;
 
@@ -163,6 +166,7 @@ void Recorder::restartRecording()
     m_audioFramesSent = 0;
     applyMediaFormat();
     m_recorder.setOutputLocation(QUrl::fromLocalFile(m_settings.outputPath));
+    m_attemptClock.start();
     m_recorder.record();
 }
 
@@ -210,8 +214,10 @@ bool Recorder::start(const Settings &settings)
         // Recording starts only once the user has made a choice in the system dialog and
         // frames are flowing, so time spent there is not part of the file.
         connect(m_portal, &PortalCapture::started, this, [this] {
-            if (m_running && m_recorder.recorderState() == QMediaRecorder::StoppedState)
+            if (m_running && m_recorder.recorderState() == QMediaRecorder::StoppedState) {
+                m_attemptClock.start();
                 m_recorder.record();
+            }
         });
         connect(m_portal, &PortalCapture::cancelled, this, [this] {
             if (!m_running)
@@ -324,6 +330,7 @@ bool Recorder::start(const Settings &settings)
         m_videoCandidates.append(VC::Unspecified);      // let Qt choose
     m_candidateIndex = 0;
     m_retrying = false;
+    m_attemptClock.invalidate();
     applyMediaFormat();
     m_recorder.setEncodingMode(QMediaRecorder::ConstantQualityEncoding);
     m_recorder.setQuality(settings.quality);
@@ -349,6 +356,7 @@ bool Recorder::start(const Settings &settings)
         return !m_failed;
     }
 #endif
+    m_attemptClock.start();
     m_recorder.record();
     return !m_failed;
 }

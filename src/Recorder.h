@@ -116,6 +116,7 @@ private:
     qint64 m_audioFramesSent = 0;
 
     QElapsedTimer m_clock;
+    QElapsedTimer m_attemptClock;   // since the current record() attempt began
     qint64 m_lastFrameUs = -1;      // all in microseconds
     qint64 m_recordStartUs = -1;
     qint64 m_pauseStartUs = -1;
