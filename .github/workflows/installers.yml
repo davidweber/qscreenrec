@@ -3,12 +3,20 @@
 #   macOS   : qscreenrec-<ver>-macos.dmg (universal arm64 + x86_64)
 #   Linux   : qscreenrec-<ver>-linux-x86_64.deb / .rpm / .tar.gz
 #
-# Run it from the Actions tab ("Run workflow"), or push a tag like v0.3.2 to also
-# attach the files to a GitHub release.
+# Three ways to run it:
+#   - Actions tab > Installers > Run workflow: builds the installers (download them as artifacts).
+#   - The same, with "Publish a GitHub release" ticked: also creates the tag v<version> and a
+#     release with the installers attached. <version> is the project version in CMakeLists.txt.
+#   - Push a tag like v0.3.3, or publish a release with a new tag: builds and attaches the files.
 name: Installers
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: "Publish a GitHub release (tag v<version from CMakeLists.txt>) with the installers"
+        type: boolean
+        default: false
   push:
     tags: ['v*']
 
@@ -73,16 +81,43 @@ jobs:
             build/qscreenrec-*.tar.gz
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release)
     needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Work out the release tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          else
+            VERSION=$(sed -n 's/^project(QScreenRec VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+            if [ -z "$VERSION" ]; then
+              echo "::error::Could not read the project version from CMakeLists.txt"; exit 1
+            fi
+            TAG="v$VERSION"
+            # A manual run never overwrites an existing release: bump the version instead.
+            if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "::error::Release $TAG already exists. Bump the version in CMakeLists.txt first."; exit 1
+            fi
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
+
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: QScreenRec ${{ steps.tag.outputs.tag }}
+          generate_release_notes: true
           files: dist/*

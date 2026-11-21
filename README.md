@@ -1,4 +1,4 @@
-# QScreenRec 0.3.2
+# QScreenRec 0.3.3
 
 Cross-platform (Linux, macOS, Windows) screen recorder built on Qt 6 Widgets + Qt Multimedia.
 Records the entire screen, a dragged-out area of a screen, or a single window to a video file,
@@ -25,16 +25,18 @@ Run CPack in the build directory after building; it produces a self-contained pa
 
 | Platform | Output | Needs |
 |----------|--------|-------|
-| Windows | `qscreenrec-0.3.2-windows-x64.exe` (NSIS setup, Start-menu entry, uninstaller) + portable `.zip` | NSIS on PATH |
-| macOS | `qscreenrec-0.3.2-macos.dmg` (drag QScreenRec to Applications) | Xcode command-line tools |
-| Linux | `qscreenrec-0.3.2-linux-x86_64.deb`, `.rpm` (if `rpmbuild` exists), portable `.tar.gz` | `dpkg`, optionally `rpm` |
+| Windows | `qscreenrec-0.3.3-windows-x64.exe` (NSIS setup, Start-menu entry, uninstaller) + portable `.zip` | NSIS on PATH |
+| macOS | `qscreenrec-0.3.3-macos.dmg` (drag QScreenRec to Applications) | Xcode command-line tools |
+| Linux | `qscreenrec-0.3.3-linux-x86_64.deb`, `.rpm` (if `rpmbuild` exists), portable `.tar.gz` | `dpkg`, optionally `rpm` |
 
 The Linux packages install to `/opt/qscreenrec` and add `/usr/bin/qscreenrec` plus a menu entry.
 
 **All three at once:** `.github/workflows/installers.yml` builds every installer on GitHub's
 Windows, macOS and Linux runners. Push the project to a GitHub repository, then run *Installers*
-from the Actions tab (files appear as artifacts) or push a tag such as `v0.3.2` (files are
-attached to a release).
+from the Actions tab (files appear as artifacts). To publish, tick **Publish a GitHub release** in
+the Run workflow dialog: the workflow creates the tag `v<version>` from the version in
+`CMakeLists.txt` and a release with the installers attached. Pushing a tag such as `v0.3.3` does
+the same.
 
 Signing is not set up: the macOS app is unsigned/un-notarized (first launch: right-click → Open,
 or sign and notarize with your Developer ID) and the Windows setup is unsigned (SmartScreen warns).
@@ -116,6 +118,8 @@ loopback is silent when nothing plays) and late bursts are dropped.
 
 ## Changes
 
+- **0.3.3** – no application changes; the Installers workflow gained a "Publish a GitHub release"
+  option for one-click releases.
 - **0.3.2** – codec fallback made robust: it no longer depends on the recorder's duration being
   zero and it absorbs the extra errors a single failed encoder start can raise (the
   "Could not initialize encoder" popup).
