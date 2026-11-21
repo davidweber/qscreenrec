@@ -15,6 +15,16 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets Multimedia)
 qt_standard_project_setup()
 
+# Qt 6.8 still asks the linker for Apple's AGL framework, which recent Xcode SDKs no longer
+# ship ("ld: framework 'AGL' not found"). Nothing uses it, so drop it from Qt's OpenGL target.
+if(APPLE AND TARGET WrapOpenGL::WrapOpenGL)
+    get_target_property(_wrap_gl_libs WrapOpenGL::WrapOpenGL INTERFACE_LINK_LIBRARIES)
+    if(_wrap_gl_libs)
+        list(FILTER _wrap_gl_libs EXCLUDE REGEX "AGL")
+        set_target_properties(WrapOpenGL::WrapOpenGL PROPERTIES INTERFACE_LINK_LIBRARIES "${_wrap_gl_libs}")
+    endif()
+endif()
+
 set(APP_SOURCES
     src/main.cpp
     src/MainWindow.h        src/MainWindow.cpp
