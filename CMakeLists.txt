@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 
 set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "Minimum macOS version")
 
-project(QScreenRec VERSION 0.4.0 LANGUAGES CXX)
+project(QScreenRec VERSION 0.5.0 LANGUAGES CXX)
 if(APPLE)
     enable_language(OBJCXX)
 endif()
@@ -32,6 +32,7 @@ set(APP_SOURCES
     src/RegionSelector.h    src/RegionSelector.cpp
     src/WindowPicker.h      src/WindowPicker.cpp
     src/PlayerWindow.h      src/PlayerWindow.cpp
+    src/UrlAudioDialog.h    src/UrlAudioDialog.cpp
     src/audio/SystemAudio.h
 )
 

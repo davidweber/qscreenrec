@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 #include "PlayerWindow.h"
 #include "RegionSelector.h"
+#include "UrlAudioDialog.h"
 #include "WindowPicker.h"
 #include "audio/SystemAudio.h"
 
@@ -251,6 +252,10 @@ void MainWindow::buildUi()
     connect(m_recordingsButton, &QPushButton::clicked, this, [this] { showPlayer(); });
     buttonRow->addWidget(m_recordingsButton, 1);
 
+    m_urlButton = new QPushButton(tr("Audio from URL…"));
+    m_urlButton->setToolTip(tr("Save the audio of a YouTube (or other online) video"));
+    connect(m_urlButton, &QPushButton::clicked, this, &MainWindow::audioFromUrl);
+
     m_statusLabel = new QLabel(tr("Ready"));
     m_statusLabel->setTextInteractionFlags(Qt::TextBrowserInteraction);
     connect(m_statusLabel, &QLabel::linkActivated, this, [this](const QString &link) {
@@ -265,6 +270,7 @@ void MainWindow::buildUi()
     layout->addWidget(sourceBox);
     layout->addWidget(outputBox);
     layout->addLayout(optionsRow);
+    optionsRow->addWidget(m_urlButton);
     layout->addLayout(buttonRow);
     layout->addWidget(m_statusLabel);
 }
@@ -463,6 +469,21 @@ void MainWindow::showPlayer(const QString &filePath)
     m_player->activateWindow();
     if (!filePath.isEmpty())
         m_player->play(filePath);
+}
+
+void MainWindow::audioFromUrl()
+{
+    const QString folder = QDir::fromNativeSeparators(m_folderEdit->text());
+    UrlAudioDialog dialog(folder, this);
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+    const QString path = dialog.savedFile();
+    m_statusLabel->setText(tr("Saved %1 — <a href=\"play:%2\">play</a> · <a href=\"%3\">open folder</a>")
+                               .arg(QDir::toNativeSeparators(path).toHtmlEscaped(),
+                                    QString::fromUtf8(QUrl::toPercentEncoding(path)),
+                                    QUrl::fromLocalFile(QFileInfo(path).absolutePath()).toString(QUrl::FullyEncoded)));
+    if (m_player && m_player->isVisible())
+        m_player->setFolder(folder);
 }
 
 Recorder::Mode MainWindow::mode() const
@@ -701,6 +722,7 @@ void MainWindow::updateUiState()
         m_recordButton->style()->polish(m_recordButton);
     }
     m_pauseButton->setEnabled(m_recorder.isActive());
+    m_urlButton->setEnabled(!busy);
     m_pauseButton->setText(m_recorder.isPaused() ? tr("Resume") : tr("Pause"));
     if (m_recorder.isActive()) {
         m_statusLabel->setText((m_recorder.isPaused() ? tr("Paused  %1") : tr("Recording  %1"))

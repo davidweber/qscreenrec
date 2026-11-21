@@ -40,6 +40,7 @@ private:
     void pickWindow();
     void populateFormats();
     void showPlayer(const QString &filePath = {});
+    void audioFromUrl();
     void refreshAudioSources();
     bool ensureMicrophonePermission();
     void selectRegion();
@@ -71,6 +72,7 @@ private:
     QRadioButton *m_windowRadio = nullptr;
     QRadioButton *m_audioOnlyRadio = nullptr;
     QPushButton *m_recordingsButton = nullptr;
+    QPushButton *m_urlButton = nullptr;
     QPointer<PlayerWindow> m_player;
     bool m_formatsForAudio = false;
     QComboBox *m_screenCombo = nullptr;

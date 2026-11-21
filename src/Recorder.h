@@ -93,7 +93,7 @@ private:
     qint64 activeUs();
     static QString unusableCodecsKey(QMediaFormat::FileFormat format);
     void applyMediaFormat();
-    bool retryWithNextCodec();
+    bool retryWithNextCodec(const QString &errorText);
     void restartRecording();
     void onRecorderStateChanged(QMediaRecorder::RecorderState state);
     void fail(const QString &message);
@@ -125,6 +125,7 @@ private:
     QList<QMediaFormat::VideoCodec> m_videoCandidates;
     int m_candidateIndex = 0;
     bool m_retrying = false;
+    static constexpr int kRetryDelayMs = 700;
     bool m_running = false;
     bool m_failed = false;
 };

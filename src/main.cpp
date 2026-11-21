@@ -61,7 +61,7 @@ static void applyTheme(QApplication &app)
     app.setPalette(p);
 
     app.setStyleSheet(QStringLiteral(R"(
-        QWidget#mainWindow, QWidget#playerWindow, WindowPicker {
+        QWidget#mainWindow, QWidget#playerWindow, QDialog#urlAudioDialog, WindowPicker {
             background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                                         stop:0 #232a3d, stop:0.55 #1b2030, stop:1 #251d38);
         }
@@ -161,6 +161,17 @@ static void applyTheme(QApplication &app)
         }
         QPushButton#playButton:hover {
             background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #6690ff, stop:1 #8c52f5);
+        }
+        QProgressBar {
+            border: 1px solid rgba(255,255,255,40);
+            border-radius: 6px;
+            background: rgba(10,12,18,140);
+            text-align: center;
+            min-height: 18px;
+        }
+        QProgressBar::chunk {
+            border-radius: 5px;
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4f7cff, stop:1 #7a3cf0);
         }
         QToolButton#windowTile {
             color: #e8ecf4;
@@ -302,6 +313,12 @@ int main(int argc, char *argv[])
     // Screen contents are still captured natively on Wayland, through the desktop portal.
     if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
         qputenv("QT_QPA_PLATFORM", "xcb");
+    // Play recordings back with software decoding. Hardware (VA-API) decoding fails on some
+    // GPU/driver combinations ("Failed to upload decode parameters") and leaves the picture
+    // blank; recordings are small enough that the CPU handles them easily. A list holding no
+    // device type turns hardware decoding off; set the variable yourself to override.
+    if (!qEnvironmentVariableIsSet("QT_FFMPEG_DECODING_HW_DEVICE_TYPES"))
+        qputenv("QT_FFMPEG_DECODING_HW_DEVICE_TYPES", ",");
 #endif
     QApplication app(argc, argv);
     QCoreApplication::setOrganizationName(QStringLiteral("Archstone"));

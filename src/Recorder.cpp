@@ -28,7 +28,7 @@ Recorder::Recorder(QObject *parent)
             this, &Recorder::durationChanged);
     connect(&m_recorder, &QMediaRecorder::errorOccurred, this,
             [this](QMediaRecorder::Error, const QString &text) {
-                if (m_retrying || retryWithNextCodec())
+                if (m_retrying || retryWithNextCodec(text))
                     return;     // one failed start can raise several errors; the retry covers them
                 // Typically a container the available encoder cannot write a header for
                 // (e.g. software H.264 into Matroska with Qt 6.8's FFmpeg backend).
@@ -114,7 +114,8 @@ QString Recorder::suffixFor(QMediaFormat::FileFormat format)
 
 QString Recorder::unusableCodecsKey(QMediaFormat::FileFormat format)
 {
-    return QStringLiteral("encoder/unusableVideoCodecs/%1").arg(int(format));
+    // "2": lists written by 0.3.x/0.4.0 could wrongly include working codecs and are ignored.
+    return QStringLiteral("encoder/unusableVideoCodecs2/%1").arg(int(format));
 }
 
 void Recorder::applyMediaFormat()
@@ -144,7 +145,7 @@ void Recorder::applyMediaFormat()
 
 // Called when the recorder reports an error. Returns true if the error was an encoder that
 // could not start and another codec is left to try; recording then restarts with it.
-bool Recorder::retryWithNextCodec()
+bool Recorder::retryWithNextCodec(const QString &errorText)
 {
     // "Could not start" = an error within the first seconds of an attempt. (The recorder's
     // duration is no guide: the audio encoder may already have produced output by the time
@@ -153,14 +154,20 @@ bool Recorder::retryWithNextCodec()
         || m_candidateIndex + 1 >= m_videoCandidates.size())
         return false;
 
-    // Remember the failure so the next recording starts with a codec that works here.
-    QSettings settings;
-    const QString key = unusableCodecsKey(m_settings.fileFormat);
-    QVariantList unusable = settings.value(key).toList();
-    const int failed = int(m_videoCandidates.at(m_candidateIndex));
-    if (!unusable.contains(failed)) {
-        unusable.append(failed);
-        settings.setValue(key, unusable);
+    // Remember the failure so the next recording starts with a codec that works here, but
+    // only for the two errors that really mean "this encoder cannot be used": anything else
+    // still gets a retry now without being held against the codec in future.
+    const bool encoderFailure = errorText.contains(QLatin1String("initialize encoder"), Qt::CaseInsensitive)
+                                || errorText.contains(QLatin1String("start writing"), Qt::CaseInsensitive);
+    if (encoderFailure) {
+        QSettings settings;
+        const QString key = unusableCodecsKey(m_settings.fileFormat);
+        QVariantList unusable = settings.value(key).toList();
+        const int failed = int(m_videoCandidates.at(m_candidateIndex));
+        if (!unusable.contains(failed)) {
+            unusable.append(failed);
+            settings.setValue(key, unusable);
+        }
     }
     qInfo("QScreenRec: video encoder for %s could not start, trying %s",
           qPrintable(QMediaFormat::videoCodecName(m_videoCandidates.at(m_candidateIndex))),
@@ -168,15 +175,13 @@ bool Recorder::retryWithNextCodec()
 
     m_retrying = true;
     ++m_candidateIndex;
-    // The recorder stops itself after an error; restart once it has (see onRecorderStateChanged).
-    QTimer::singleShot(0, this, [this] {
-        if (!m_retrying)
-            return;
-        if (m_recorder.recorderState() == QMediaRecorder::StoppedState)
-            restartRecording();
-        else
-            m_recorder.stop();
-    });
+    // The recorder stops itself after an error. Give the failed attempt time to shut down
+    // completely before starting the next one: it can keep raising errors while it does, and
+    // one arriving after the restart would be blamed on the new codec. m_retrying stays set
+    // meanwhile, so those errors are absorbed.
+    if (m_recorder.recorderState() != QMediaRecorder::StoppedState)
+        m_recorder.stop();
+    QTimer::singleShot(kRetryDelayMs, this, &Recorder::restartRecording);
     return true;
 }
 
@@ -184,6 +189,10 @@ void Recorder::restartRecording()
 {
     if (!m_retrying || !m_running)
         return;
+    if (m_recorder.recorderState() != QMediaRecorder::StoppedState) {   // still shutting down
+        QTimer::singleShot(kRetryDelayMs, this, &Recorder::restartRecording);
+        return;
+    }
     m_retrying = false;
     QFile::remove(m_settings.outputPath);       // whatever the failed attempt left behind
     m_lastFrameUs = -1;
@@ -541,10 +550,8 @@ void Recorder::onRecorderStateChanged(QMediaRecorder::RecorderState state)
         emit pausedChanged(true);
         break;
     case QMediaRecorder::StoppedState:
-        if (m_retrying) {
-            QTimer::singleShot(0, this, &Recorder::restartRecording);
-            break;
-        }
+        if (m_retrying)
+            break;      // restartRecording() is already scheduled
         if (m_running) {
             m_running = false;
             const QString path = m_recorder.actualLocation().toLocalFile();

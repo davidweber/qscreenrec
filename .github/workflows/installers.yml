@@ -7,7 +7,7 @@
 #   - Actions tab > Installers > Run workflow: builds the installers (download them as artifacts).
 #   - The same, with "Publish a GitHub release" ticked: also creates the tag v<version> and a
 #     release with the installers attached. <version> is the project version in CMakeLists.txt.
-#   - Push a tag like v0.4.0, or publish a release with a new tag: builds and attaches the files.
+#   - Push a tag like v0.5.0, or publish a release with a new tag: builds and attaches the files.
 name: Installers
 
 on:

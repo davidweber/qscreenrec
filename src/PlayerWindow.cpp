@@ -35,7 +35,7 @@ QStringList PlayerWindow::mediaSuffixes()
 {
     return { QStringLiteral("mp4"), QStringLiteral("mkv"), QStringLiteral("mov"), QStringLiteral("avi"),
              QStringLiteral("webm"), QStringLiteral("m4a"), QStringLiteral("mp3"), QStringLiteral("flac"),
-             QStringLiteral("wav"), QStringLiteral("ogg") };
+             QStringLiteral("wav"), QStringLiteral("ogg"), QStringLiteral("opus") };
 }
 
 PlayerWindow::PlayerWindow(QWidget *parent)

@@ -1,9 +1,9 @@
-# QScreenRec 0.4.0
+# QScreenRec 0.5.0
 
 Cross-platform (Linux, macOS, Windows) screen recorder built on Qt 6 Widgets + Qt Multimedia.
 Records the entire screen, a dragged-out area of a screen, or a single window to a video file,
-with system audio ("what you hear") or any audio input device. It can also record audio alone
-and has a built-in player for the recordings.
+with system audio ("what you hear") or any audio input device. It can also record audio alone,
+save the audio of an online video (YouTube and others) from its URL, and play recordings back.
 
 ## Requirements
 
@@ -26,9 +26,9 @@ Run CPack in the build directory after building; it produces a self-contained pa
 
 | Platform | Output | Needs |
 |----------|--------|-------|
-| Windows | `qscreenrec-0.4.0-windows-x64.exe` (NSIS setup, Start-menu entry, uninstaller) + portable `.zip` | NSIS on PATH |
-| macOS | `qscreenrec-0.4.0-macos.dmg` (drag QScreenRec to Applications) | Xcode command-line tools |
-| Linux | `qscreenrec-0.4.0-linux-x86_64.deb`, `.rpm` (if `rpmbuild` exists), portable `.tar.gz` | `dpkg`, optionally `rpm` |
+| Windows | `qscreenrec-0.5.0-windows-x64.exe` (NSIS setup, Start-menu entry, uninstaller) + portable `.zip` | NSIS on PATH |
+| macOS | `qscreenrec-0.5.0-macos.dmg` (drag QScreenRec to Applications) | Xcode command-line tools |
+| Linux | `qscreenrec-0.5.0-linux-x86_64.deb`, `.rpm` (if `rpmbuild` exists), portable `.tar.gz` | `dpkg`, optionally `rpm` |
 
 The Linux packages install to `/opt/qscreenrec` and add `/usr/bin/qscreenrec` plus a menu entry.
 
@@ -36,7 +36,7 @@ The Linux packages install to `/opt/qscreenrec` and add `/usr/bin/qscreenrec` pl
 Windows, macOS and Linux runners. Push the project to a GitHub repository, then run *Installers*
 from the Actions tab (files appear as artifacts). To publish, tick **Publish a GitHub release** in
 the Run workflow dialog: the workflow creates the tag `v<version>` from the version in
-`CMakeLists.txt` and a release with the installers attached. Pushing a tag such as `v0.4.0` does
+`CMakeLists.txt` and a release with the installers attached. Pushing a tag such as `v0.5.0` does
 the same.
 
 Signing is not set up: the macOS app is unsigned/un-notarized (first launch: right-click → Open,
@@ -57,6 +57,12 @@ Before publishing, set the maintainer address in `CPACK_PACKAGE_CONTACT` (CMakeL
 **Playback:** *▶ Recordings* opens the built-in player: the recordings in the output folder are
 listed on the left (click one to play), with play/pause, seek and volume controls; Space toggles
 playback and ←/→ skip 5 seconds. The *play* link shown after a recording opens it there directly.
+
+**Audio from URL:** *Audio from URL…* saves the audio track of an online video into the recordings
+folder: paste the address, choose a format, click *Extract audio*. The work is done by two external
+tools that are not bundled: [yt-dlp](https://github.com/yt-dlp/yt-dlp#installation) (required; it
+supports YouTube and many other sites) and ffmpeg (optional; needed to convert to M4A/MP3/FLAC/WAV,
+otherwise the site's original audio format is kept). Only download what you have the right to.
 
 Files are named `Recording yyyy-MM-dd HH.mm.ss.<ext>`. In area mode a red frame marks the
 recorded rectangle; it sits just outside the area and is not part of the video.
@@ -119,6 +125,7 @@ loopback is silent when nothing plays) and late bursts are dropped.
 | `src/audio/SystemAudio_{pulse,wasapi}.cpp`, `SystemAudio_mac.mm` | per-platform backends (`_none.cpp` = stub) |
 | `src/PortalCapture.*` | Linux/Wayland capture: ScreenCast portal (D-Bus) and PipeWire video stream |
 | `src/PlayerWindow.*` | built-in player (QMediaPlayer) with the recordings list |
+| `src/UrlAudioDialog.*` | "Audio from URL": runs yt-dlp (+ ffmpeg) and shows progress |
 | `src/WindowPicker.*` | window chooser with live thumbnails |
 | `src/RegionSelector.*` | drag-to-select overlay and the on-screen area frame |
 | `src/MainWindow.*` | UI, countdown, tray icon, settings |
@@ -127,6 +134,11 @@ loopback is silent when nothing plays) and late bursts are dropped.
 
 ## Changes
 
+- **0.5.0** – *Audio from URL* (extract the audio of a YouTube or other online video via yt-dlp).
+  Linux: recordings play back with software decoding (hardware MJPEG/H.264 decoding
+  through VA-API failed on some drivers); the codec fallback waits for a failed attempt to shut
+  down before trying the next codec, so a late error no longer pushes it past a working codec
+  (which could leave recordings in Motion JPEG), and previously remembered failures are reset.
 - **0.4.0** – audio-only recording mode (M4A/FLAC/WAV/Ogg); built-in player for video and audio
   recordings with a recordings list.
 - **0.3.3** – no application changes; the Installers workflow gained a "Publish a GitHub release"
