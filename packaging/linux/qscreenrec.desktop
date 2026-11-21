@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=QScreenRec
+Comment=Record the screen, an area or a window to a video file
+Exec=/opt/qscreenrec/bin/qscreenrec
+Icon=/opt/qscreenrec/share/icons/hicolor/256x256/apps/qscreenrec.png
+Terminal=false
+Categories=AudioVideo;Video;Recorder;Utility;

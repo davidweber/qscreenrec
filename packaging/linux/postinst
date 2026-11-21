@@ -1,0 +1,7 @@
+#!/bin/sh
+# Make the app (installed under /opt/qscreenrec) visible on PATH and in the applications menu.
+set -e
+ln -sf /opt/qscreenrec/bin/qscreenrec /usr/bin/qscreenrec
+mkdir -p /usr/share/applications
+ln -sf /opt/qscreenrec/share/applications/qscreenrec.desktop /usr/share/applications/qscreenrec.desktop
+exit 0
