@@ -1,12 +1,13 @@
-# QScreenRec 0.3.3
+# QScreenRec 0.4.0
 
 Cross-platform (Linux, macOS, Windows) screen recorder built on Qt 6 Widgets + Qt Multimedia.
 Records the entire screen, a dragged-out area of a screen, or a single window to a video file,
-with system audio ("what you hear") or any audio input device.
+with system audio ("what you hear") or any audio input device. It can also record audio alone
+and has a built-in player for the recordings.
 
 ## Requirements
 
-- Qt **6.8 or newer** with the **Qt Multimedia** module (FFmpeg backend, the default)
+- Qt **6.8 or newer** with the **Qt Multimedia** and **Qt Multimedia Widgets** modules (FFmpeg backend, the default)
 - CMake 3.21+, a C++17 compiler
 - Linux: `libpulse-dev` (system-audio capture) and `libpipewire-0.3-dev` (capture on Wayland);
   the build still works without either, minus that feature
@@ -25,9 +26,9 @@ Run CPack in the build directory after building; it produces a self-contained pa
 
 | Platform | Output | Needs |
 |----------|--------|-------|
-| Windows | `qscreenrec-0.3.3-windows-x64.exe` (NSIS setup, Start-menu entry, uninstaller) + portable `.zip` | NSIS on PATH |
-| macOS | `qscreenrec-0.3.3-macos.dmg` (drag QScreenRec to Applications) | Xcode command-line tools |
-| Linux | `qscreenrec-0.3.3-linux-x86_64.deb`, `.rpm` (if `rpmbuild` exists), portable `.tar.gz` | `dpkg`, optionally `rpm` |
+| Windows | `qscreenrec-0.4.0-windows-x64.exe` (NSIS setup, Start-menu entry, uninstaller) + portable `.zip` | NSIS on PATH |
+| macOS | `qscreenrec-0.4.0-macos.dmg` (drag QScreenRec to Applications) | Xcode command-line tools |
+| Linux | `qscreenrec-0.4.0-linux-x86_64.deb`, `.rpm` (if `rpmbuild` exists), portable `.tar.gz` | `dpkg`, optionally `rpm` |
 
 The Linux packages install to `/opt/qscreenrec` and add `/usr/bin/qscreenrec` plus a menu entry.
 
@@ -35,7 +36,7 @@ The Linux packages install to `/opt/qscreenrec` and add `/usr/bin/qscreenrec` pl
 Windows, macOS and Linux runners. Push the project to a GitHub repository, then run *Installers*
 from the Actions tab (files appear as artifacts). To publish, tick **Publish a GitHub release** in
 the Run workflow dialog: the workflow creates the tag `v<version>` from the version in
-`CMakeLists.txt` and a release with the installers attached. Pushing a tag such as `v0.3.3` does
+`CMakeLists.txt` and a release with the installers attached. Pushing a tag such as `v0.4.0` does
 the same.
 
 Signing is not set up: the macOS app is unsigned/un-notarized (first launch: right-click → Open,
@@ -46,10 +47,16 @@ Before publishing, set the maintainer address in `CPACK_PACKAGE_CONTACT` (CMakeL
 
 1. Choose **Entire screen**, **Area of the screen** (click *Select area…* and drag), or **Window**
    (choose from the list, or click *Pick…* and click the window's live preview).
+   **Audio only** records just sound, to an audio file (M4A, FLAC, WAV or Ogg, depending on your
+   Qt's encoders).
 2. Choose the **Audio** source: system audio, no audio, or an input device (microphone, line-in).
 3. Pick the folder, container format, quality and frame rate.
 4. **Record** (Ctrl+R). The window minimizes after the start delay; stop from the tray icon
    (single click) or restore the window and press **Stop**. **Pause/Resume** leaves no gap in the file.
+
+**Playback:** *▶ Recordings* opens the built-in player: the recordings in the output folder are
+listed on the left (click one to play), with play/pause, seek and volume controls; Space toggles
+playback and ←/→ skip 5 seconds. The *play* link shown after a recording opens it there directly.
 
 Files are named `Recording yyyy-MM-dd HH.mm.ss.<ext>`. In area mode a red frame marks the
 recorded rectangle; it sits just outside the area and is not part of the video.
@@ -60,6 +67,7 @@ recorded rectangle; it sits just outside the area and is not part of the video.
     qscreenrec -o demo.mp4 -d 10 -a system               # whole screen 1 + system audio, 10 s
     qscreenrec -o demo.mp4 -r 100,100,800,600 -f 60      # area x,y,w,h (logical px), 60 fps
     qscreenrec -o demo.mp4 -w "KiCad" -a mic -d 30       # window by title substring + microphone
+    qscreenrec -o notes.m4a -a system -d 60              # audio only (audio suffix = no video)
 
 ## Audio
 
@@ -110,6 +118,7 @@ loopback is silent when nothing plays) and late bursts are dropped.
 | `src/audio/SystemAudio.h` | Qt-free interface for system-audio capture |
 | `src/audio/SystemAudio_{pulse,wasapi}.cpp`, `SystemAudio_mac.mm` | per-platform backends (`_none.cpp` = stub) |
 | `src/PortalCapture.*` | Linux/Wayland capture: ScreenCast portal (D-Bus) and PipeWire video stream |
+| `src/PlayerWindow.*` | built-in player (QMediaPlayer) with the recordings list |
 | `src/WindowPicker.*` | window chooser with live thumbnails |
 | `src/RegionSelector.*` | drag-to-select overlay and the on-screen area frame |
 | `src/MainWindow.*` | UI, countdown, tray icon, settings |
@@ -118,6 +127,8 @@ loopback is silent when nothing plays) and late bursts are dropped.
 
 ## Changes
 
+- **0.4.0** – audio-only recording mode (M4A/FLAC/WAV/Ogg); built-in player for video and audio
+  recordings with a recordings list.
 - **0.3.3** – no application changes; the Installers workflow gained a "Publish a GitHub release"
   option for one-click releases.
 - **0.3.2** – codec fallback made robust: it no longer depends on the recorder's duration being

@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 
 set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "Minimum macOS version")
 
-project(QScreenRec VERSION 0.3.3 LANGUAGES CXX)
+project(QScreenRec VERSION 0.4.0 LANGUAGES CXX)
 if(APPLE)
     enable_language(OBJCXX)
 endif()
@@ -12,7 +12,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Qt 6.8 is the minimum: frame/audio-buffer inputs (QVideoFrameInput, QAudioBufferInput) are 6.8,
 # window recording (QWindowCapture) is 6.6, screen recording (QScreenCapture) is 6.5.
-find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets Multimedia)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets Multimedia MultimediaWidgets)
 qt_standard_project_setup()
 
 # Qt 6.8 still asks the linker for Apple's AGL framework, which recent Xcode SDKs no longer
@@ -31,6 +31,7 @@ set(APP_SOURCES
     src/Recorder.h          src/Recorder.cpp
     src/RegionSelector.h    src/RegionSelector.cpp
     src/WindowPicker.h      src/WindowPicker.cpp
+    src/PlayerWindow.h      src/PlayerWindow.cpp
     src/audio/SystemAudio.h
 )
 
@@ -71,7 +72,7 @@ qt_add_executable(qscreenrec WIN32 MACOSX_BUNDLE ${APP_SOURCES})
 
 target_include_directories(qscreenrec PRIVATE src)
 target_compile_definitions(qscreenrec PRIVATE APP_VERSION="${PROJECT_VERSION}")
-target_link_libraries(qscreenrec PRIVATE Qt6::Widgets Qt6::Multimedia)
+target_link_libraries(qscreenrec PRIVATE Qt6::Widgets Qt6::Multimedia Qt6::MultimediaWidgets)
 
 if(WIN32)
     target_link_libraries(qscreenrec PRIVATE ole32)

@@ -39,7 +39,7 @@ class Recorder : public QObject
 {
     Q_OBJECT
 public:
-    enum class Mode { FullScreen, Region, Window };
+    enum class Mode { FullScreen, Region, Window, AudioOnly };
     enum class Audio { None, System, Device };
 
     struct Settings {
@@ -68,7 +68,8 @@ public:
     bool isPaused() const;
 
     // Container formats this Qt build can actually encode, in display order.
-    static QList<QMediaFormat::FileFormat> supportedFileFormats();
+    static QList<QMediaFormat::FileFormat> supportedFileFormats();          // video (+ audio)
+    static QList<QMediaFormat::FileFormat> supportedAudioFileFormats();     // audio-only recordings
     static QString suffixFor(QMediaFormat::FileFormat format);
 
     // True on Linux Wayland sessions with a screen-sharing portal: applications cannot grab the

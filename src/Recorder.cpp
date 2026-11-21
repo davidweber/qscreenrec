@@ -32,9 +32,10 @@ Recorder::Recorder(QObject *parent)
                     return;     // one failed start can raise several errors; the retry covers them
                 // Typically a container the available encoder cannot write a header for
                 // (e.g. software H.264 into Matroska with Qt 6.8's FFmpeg backend).
-                if (m_settings.fileFormat != QMediaFormat::MPEG4)
+                const auto f = m_settings.fileFormat;
+                if (f != QMediaFormat::MPEG4 && f != QMediaFormat::Mpeg4Audio && f != QMediaFormat::Wave)
                     fail(tr("%1\n\nThis format may not work with the encoders installed here; "
-                            "try MP4.").arg(text));
+                            "try %2.").arg(text, m_settings.mode == Mode::AudioOnly ? tr("M4A or WAV") : tr("MP4")));
                 else
                     fail(text);
             });
@@ -79,9 +80,30 @@ bool Recorder::captureNeedsPortal()
 #endif
 }
 
+QList<QMediaFormat::FileFormat> Recorder::supportedAudioFileFormats()
+{
+    static const QMediaFormat::FileFormat preferred[] = {
+        QMediaFormat::Mpeg4Audio, QMediaFormat::MP3, QMediaFormat::FLAC,
+        QMediaFormat::Wave, QMediaFormat::Ogg,
+    };
+    const auto available = QMediaFormat().supportedFileFormats(QMediaFormat::Encode);
+    QList<QMediaFormat::FileFormat> result;
+    for (auto f : preferred) {
+        // Listed only if some audio codec can actually be encoded into it.
+        if (available.contains(f) && !QMediaFormat(f).supportedAudioCodecs(QMediaFormat::Encode).isEmpty())
+            result.append(f);
+    }
+    return result;
+}
+
 QString Recorder::suffixFor(QMediaFormat::FileFormat format)
 {
     switch (format) {
+    case QMediaFormat::Mpeg4Audio: return QStringLiteral("m4a");
+    case QMediaFormat::MP3:        return QStringLiteral("mp3");
+    case QMediaFormat::FLAC:       return QStringLiteral("flac");
+    case QMediaFormat::Wave:       return QStringLiteral("wav");
+    case QMediaFormat::Ogg:        return QStringLiteral("ogg");
     case QMediaFormat::Matroska:  return QStringLiteral("mkv");
     case QMediaFormat::WebM:      return QStringLiteral("webm");
     case QMediaFormat::QuickTime: return QStringLiteral("mov");
@@ -99,6 +121,11 @@ void Recorder::applyMediaFormat()
 {
     using AC = QMediaFormat::AudioCodec;
     QMediaFormat format(m_settings.fileFormat);
+    if (m_settings.mode == Mode::AudioOnly) {
+        format.resolveForEncoding(QMediaFormat::NoFlags);   // audio codec that suits the container
+        m_recorder.setMediaFormat(format);
+        return;
+    }
     format.setVideoCodec(m_videoCandidates.value(m_candidateIndex, QMediaFormat::VideoCodec::Unspecified));
 
     const bool webm = m_settings.fileFormat == QMediaFormat::WebM;
@@ -203,9 +230,15 @@ bool Recorder::start(const Settings &settings)
         return false;
     }
 
+    const bool audioOnly = settings.mode == Mode::AudioOnly;
+    if (audioOnly && settings.audio == Audio::None) {
+        fail(tr("Choose an audio source to record."));
+        return false;
+    }
+
     bool viaPortal = false;
 #ifdef HAVE_PORTAL_CAPTURE
-    viaPortal = settings.viaPortal || settings.pipeWireNode != 0;
+    viaPortal = !audioOnly && (settings.viaPortal || settings.pipeWireNode != 0);
     if (viaPortal) {
         m_portal = new PortalCapture(this);
         m_portal->setMaximumFrameRate(settings.frameRate);
@@ -229,7 +262,7 @@ bool Recorder::start(const Settings &settings)
     }
 #endif
 
-    switch (viaPortal ? Mode(-1) : settings.mode) {
+    switch (viaPortal ? Mode::AudioOnly : settings.mode) {
     case Mode::FullScreen:
     case Mode::Region: {
         if (!settings.screen) {
@@ -259,13 +292,15 @@ bool Recorder::start(const Settings &settings)
         m_grabSession.setWindowCapture(m_windowCapture);
         break;
     }
-    default:    // capturing through the desktop portal
+    default:    // audio only, or capturing through the desktop portal
         break;
     }
 
-    m_frameInput = new QVideoFrameInput(this);
-    m_session.setVideoFrameInput(m_frameInput);
-    m_grabSession.setVideoSink(&m_sink);
+    if (!audioOnly) {
+        m_frameInput = new QVideoFrameInput(this);
+        m_session.setVideoFrameInput(m_frameInput);
+        m_grabSession.setVideoSink(&m_sink);
+    }
 
     switch (settings.audio) {
     case Audio::None:
@@ -326,6 +361,8 @@ bool Recorder::start(const Settings &settings)
             m_videoCandidates.append(codec);
     }
     m_videoCandidates.append(knownBad);
+    if (audioOnly)
+        m_videoCandidates.clear();
     if (m_videoCandidates.isEmpty())
         m_videoCandidates.append(VC::Unspecified);      // let Qt choose
     m_candidateIndex = 0;

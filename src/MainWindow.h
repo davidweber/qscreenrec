@@ -17,6 +17,7 @@ class QPushButton;
 class QRadioButton;
 class QSpinBox;
 class QSystemTrayIcon;
+class PlayerWindow;
 class RegionFrame;
 
 class MainWindow : public QWidget
@@ -37,6 +38,8 @@ private:
     void refreshScreens();
     void refreshWindows();
     void pickWindow();
+    void populateFormats();
+    void showPlayer(const QString &filePath = {});
     void refreshAudioSources();
     bool ensureMicrophonePermission();
     void selectRegion();
@@ -66,6 +69,10 @@ private:
     QRadioButton *m_fullScreenRadio = nullptr;
     QRadioButton *m_regionRadio = nullptr;
     QRadioButton *m_windowRadio = nullptr;
+    QRadioButton *m_audioOnlyRadio = nullptr;
+    QPushButton *m_recordingsButton = nullptr;
+    QPointer<PlayerWindow> m_player;
+    bool m_formatsForAudio = false;
     QComboBox *m_screenCombo = nullptr;
     QPushButton *m_selectRegionButton = nullptr;
     QLabel *m_regionLabel = nullptr;

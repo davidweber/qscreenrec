@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "PlayerWindow.h"
 #include "RegionSelector.h"
 #include "WindowPicker.h"
 #include "audio/SystemAudio.h"
@@ -11,6 +12,7 @@
 #include <QCloseEvent>
 #include <QComboBox>
 #include <QDateTime>
+#include <QDesktopServices>
 #include <QDir>
 #include <QFileDialog>
 #include <QFormLayout>
@@ -130,9 +132,10 @@ void MainWindow::buildUi()
     m_fullScreenRadio = new QRadioButton(tr("Entire screen"));
     m_regionRadio = new QRadioButton(tr("Area of the screen"));
     m_windowRadio = new QRadioButton(tr("Window"));
+    m_audioOnlyRadio = new QRadioButton(tr("Audio only"));
     m_fullScreenRadio->setChecked(true);
     auto *group = new QButtonGroup(this);
-    for (auto *b : { m_fullScreenRadio, m_regionRadio, m_windowRadio }) {
+    for (auto *b : { m_fullScreenRadio, m_regionRadio, m_windowRadio, m_audioOnlyRadio }) {
         group->addButton(b);
         connect(b, &QRadioButton::toggled, this, &MainWindow::updateUiState);
     }
@@ -160,6 +163,7 @@ void MainWindow::buildUi()
     modeRow->addWidget(m_fullScreenRadio);
     modeRow->addWidget(m_regionRadio);
     modeRow->addWidget(m_windowRadio);
+    modeRow->addWidget(m_audioOnlyRadio);
     modeRow->addStretch();
 
     auto *regionRow = new QHBoxLayout;
@@ -191,11 +195,7 @@ void MainWindow::buildUi()
     folderRow->addWidget(browse);
 
     m_formatCombo = new QComboBox;
-    for (auto f : Recorder::supportedFileFormats()) {
-        m_formatCombo->addItem(QStringLiteral("%1 (.%2)").arg(QMediaFormat::fileFormatName(f),
-                                                               Recorder::suffixFor(f)),
-                               QVariant::fromValue(int(f)));
-    }
+    populateFormats();
 
     m_qualityCombo = new QComboBox;
     m_qualityCombo->addItem(tr("Low"), int(QMediaRecorder::LowQuality));
@@ -245,10 +245,20 @@ void MainWindow::buildUi()
     auto *buttonRow = new QHBoxLayout;
     buttonRow->addWidget(m_recordButton, 2);
     buttonRow->addWidget(m_pauseButton, 1);
+    m_recordingsButton = new QPushButton(tr("▶  Recordings"));
+    m_recordingsButton->setMinimumHeight(36);
+    m_recordingsButton->setToolTip(tr("Play back recordings"));
+    connect(m_recordingsButton, &QPushButton::clicked, this, [this] { showPlayer(); });
+    buttonRow->addWidget(m_recordingsButton, 1);
 
     m_statusLabel = new QLabel(tr("Ready"));
     m_statusLabel->setTextInteractionFlags(Qt::TextBrowserInteraction);
-    m_statusLabel->setOpenExternalLinks(true);
+    connect(m_statusLabel, &QLabel::linkActivated, this, [this](const QString &link) {
+        if (link.startsWith(QLatin1String("play:")))
+            showPlayer(QUrl::fromPercentEncoding(link.mid(5).toUtf8()));
+        else
+            QDesktopServices::openUrl(QUrl(link));
+    });
     m_statusLabel->setWordWrap(true);
 
     auto *layout = new QVBoxLayout(this);
@@ -270,9 +280,8 @@ void MainWindow::loadSettings()
     }
     m_folderEdit->setText(QDir::toNativeSeparators(folder));
 
-    int i = m_formatCombo->findData(s.value("output/format", int(QMediaFormat::MPEG4)));
-    m_formatCombo->setCurrentIndex(qMax(0, i));
-    i = m_qualityCombo->findData(s.value("output/quality", int(QMediaRecorder::HighQuality)));
+    populateFormats();
+    int i = m_qualityCombo->findData(s.value("output/quality", int(QMediaRecorder::HighQuality)));
     m_qualityCombo->setCurrentIndex(i < 0 ? 2 : i);
     m_fpsSpin->setValue(s.value("output/fps", 30).toInt());
     m_delaySpin->setValue(s.value("options/delay", 3).toInt());
@@ -285,7 +294,8 @@ void MainWindow::saveSettings() const
 {
     QSettings s;
     s.setValue("output/folder", QDir::fromNativeSeparators(m_folderEdit->text()));
-    s.setValue("output/format", m_formatCombo->currentData());
+    if (m_formatCombo->count() > 0)
+        s.setValue(m_formatsForAudio ? "output/audioFormat" : "output/format", m_formatCombo->currentData());
     s.setValue("output/quality", m_qualityCombo->currentData());
     s.setValue("output/fps", m_fpsSpin->value());
     s.setValue("options/delay", m_delaySpin->value());
@@ -419,8 +429,46 @@ QScreen *MainWindow::selectedScreen() const
     return QGuiApplication::primaryScreen();
 }
 
+// The format list depends on the mode: video containers, or audio containers for "Audio only".
+void MainWindow::populateFormats()
+{
+    const bool audio = m_audioOnlyRadio && m_audioOnlyRadio->isChecked();
+    QSettings s;
+    if (m_formatCombo->count() > 0)     // remember the choice made for the other kind
+        s.setValue(m_formatsForAudio ? "output/audioFormat" : "output/format", m_formatCombo->currentData());
+
+    m_formatsForAudio = audio;
+    m_formatCombo->clear();
+    const auto formats = audio ? Recorder::supportedAudioFileFormats() : Recorder::supportedFileFormats();
+    for (auto f : formats) {
+        m_formatCombo->addItem(QStringLiteral("%1 (.%2)").arg(QMediaFormat::fileFormatName(f),
+                                                               Recorder::suffixFor(f)),
+                               QVariant::fromValue(int(f)));
+    }
+    const int wanted = audio ? s.value("output/audioFormat", int(QMediaFormat::Mpeg4Audio)).toInt()
+                             : s.value("output/format", int(QMediaFormat::MPEG4)).toInt();
+    m_formatCombo->setCurrentIndex(qMax(0, m_formatCombo->findData(wanted)));
+}
+
+void MainWindow::showPlayer(const QString &filePath)
+{
+    if (!m_player) {
+        m_player = new PlayerWindow;
+        m_player->setAttribute(Qt::WA_DeleteOnClose);
+        m_player->setWindowIcon(windowIcon());
+    }
+    m_player->setFolder(QDir::fromNativeSeparators(m_folderEdit->text()));
+    m_player->show();
+    m_player->raise();
+    m_player->activateWindow();
+    if (!filePath.isEmpty())
+        m_player->play(filePath);
+}
+
 Recorder::Mode MainWindow::mode() const
 {
+    if (m_audioOnlyRadio->isChecked())
+        return Recorder::Mode::AudioOnly;
     if (m_regionRadio->isChecked())
         return Recorder::Mode::Region;
     if (m_windowRadio->isChecked())
@@ -490,8 +538,12 @@ void MainWindow::toggleRecording()
 void MainWindow::beginCountdown()
 {
     if (m_formatCombo->count() == 0) {
-        onFailed(tr("This Qt installation has no video encoder available "
+        onFailed(tr("This Qt installation has no encoder available for this kind of recording "
                     "(is the Qt Multimedia FFmpeg plugin installed?)."));
+        return;
+    }
+    if (mode() == Recorder::Mode::AudioOnly && m_audioCombo->currentData().toString() == QLatin1String("none")) {
+        onFailed(tr("Choose an audio source (system audio or an input device) to record audio."));
         return;
     }
     QDir dir(QDir::fromNativeSeparators(m_folderEdit->text()));
@@ -577,9 +629,12 @@ void MainWindow::onFinished(const QString &path)
     delete m_regionFrame;
     restoreWindow();
     const QUrl folder = QUrl::fromLocalFile(QFileInfo(path).absolutePath());
-    m_statusLabel->setText(tr("Saved %1 — <a href=\"%2\">open folder</a>")
+    m_statusLabel->setText(tr("Saved %1 — <a href=\"play:%2\">play</a> · <a href=\"%3\">open folder</a>")
                                .arg(QDir::toNativeSeparators(path).toHtmlEscaped(),
+                                    QString::fromUtf8(QUrl::toPercentEncoding(path)),
                                     folder.toString(QUrl::FullyEncoded)));
+    if (m_player && m_player->isVisible())
+        m_player->setFolder(QDir::fromNativeSeparators(m_folderEdit->text()));
     if (m_tray && !isActiveWindow())
         m_tray->showMessage(tr("Recording saved"), QDir::toNativeSeparators(path));
     updateUiState();
@@ -613,9 +668,14 @@ void MainWindow::updateUiState()
 
     for (QWidget *w : std::initializer_list<QWidget *>{
              m_fullScreenRadio, m_regionRadio, m_windowRadio, m_audioCombo, m_folderEdit, m_formatCombo,
-             m_qualityCombo, m_fpsSpin, m_delaySpin, m_minimizeCheck })
+             m_qualityCombo, m_delaySpin, m_minimizeCheck })
         w->setEnabled(!busy);
-    m_screenCombo->setEnabled(!busy && m != Recorder::Mode::Window);
+    const bool audioOnly = m == Recorder::Mode::AudioOnly;
+    if (audioOnly != m_formatsForAudio)
+        populateFormats();
+    m_fpsSpin->setEnabled(!busy && !audioOnly);
+    m_audioOnlyRadio->setEnabled(!busy);
+    m_screenCombo->setEnabled(!busy && m != Recorder::Mode::Window && !audioOnly);
     m_selectRegionButton->setEnabled(!busy && m == Recorder::Mode::Region);
     m_regionLabel->setEnabled(m == Recorder::Mode::Region);
     const bool listWindows = !busy && m == Recorder::Mode::Window && !m_viaPortal;
@@ -653,6 +713,8 @@ void MainWindow::closeEvent(QCloseEvent *event)
     saveSettings();
     m_countdownTimer.stop();
     delete m_regionFrame;
+    if (m_player)
+        m_player->close();
     if (m_recorder.isActive()) {
         // Finalize the file before quitting, otherwise the container may be left unplayable.
         connect(&m_recorder, &Recorder::finished, qApp, &QCoreApplication::quit);

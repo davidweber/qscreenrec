@@ -61,7 +61,7 @@ static void applyTheme(QApplication &app)
     app.setPalette(p);
 
     app.setStyleSheet(QStringLiteral(R"(
-        QWidget#mainWindow, WindowPicker {
+        QWidget#mainWindow, QWidget#playerWindow, WindowPicker {
             background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                                         stop:0 #232a3d, stop:0.55 #1b2030, stop:1 #251d38);
         }
@@ -138,6 +138,30 @@ static void applyTheme(QApplication &app)
             background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #4f7cff, stop:1 #7a3cf0);
         }
         QCheckBox::indicator:disabled { border-color: #4a5063; }
+        QListWidget#recordingList {
+            border: 1px solid rgba(255,255,255,28);
+            border-radius: 8px;
+            background: rgba(10,12,18,120);
+        }
+        QListWidget#recordingList::item { padding: 5px 6px; }
+        QListWidget#recordingList::item:selected {
+            color: white;
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4f7cff, stop:1 #7a3cf0);
+        }
+        QLabel#playerPlaceholder {
+            color: #9aa6c4;
+            font-size: 15pt;
+            border-radius: 8px;
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #11141d, stop:1 #1d1630);
+        }
+        QPushButton#playButton {
+            font-weight: 600;
+            border: 1px solid #7fb0ff;
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #4f7cff, stop:1 #7a3cf0);
+        }
+        QPushButton#playButton:hover {
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #6690ff, stop:1 #8c52f5);
+        }
         QToolButton#windowTile {
             color: #e8ecf4;
             border: 1px solid rgba(255,255,255,30);
@@ -167,11 +191,19 @@ static int runHeadless(QApplication &app, const QCommandLineParser &cli)
     const QString suffix = QFileInfo(s.outputPath).suffix().toLower();
     QStringList suffixes;
     bool known = false;
+    bool audioOnly = false;
     for (auto f : Recorder::supportedFileFormats()) {
         suffixes << Recorder::suffixFor(f);
         if (suffixes.last() == suffix) {
             s.fileFormat = f;
             known = true;
+        }
+    }
+    for (auto f : Recorder::supportedAudioFileFormats()) {     // an audio suffix = audio-only recording
+        suffixes << Recorder::suffixFor(f);
+        if (suffixes.last() == suffix) {
+            s.fileFormat = f;
+            known = audioOnly = true;
         }
     }
     if (!known) {
@@ -215,6 +247,13 @@ static int runHeadless(QApplication &app, const QCommandLineParser &cli)
         }
     }
 
+    if (audioOnly) {
+        s.mode = Recorder::Mode::AudioOnly;
+        if (!cli.isSet("audio")) {
+            err << "Audio-only recording needs --audio system or --audio mic\n";
+            return 2;
+        }
+    }
     const QString audio = cli.value("audio").toLower();
     if (audio == QLatin1String("system")) {
         s.audio = Recorder::Audio::System;
@@ -279,7 +318,8 @@ int main(int argc, char *argv[])
     cli.addHelpOption();
     cli.addVersionOption();
     cli.addOptions({
-        { { "o", "output" }, "Record without the GUI and write to <file> (.mp4, .mkv, .mov, ...).", "file" },
+        { { "o", "output" }, "Record without the GUI and write to <file> (.mp4, .mkv, .mov, ...). "
+                             "An audio suffix (.m4a, .flac, .wav, ...) records audio only.", "file" },
         { { "r", "region" }, "Record an area: x,y,width,height in logical pixels relative to the screen.", "rect" },
         { { "w", "window" }, "Record the first window whose title contains <title>.", "title" },
         { { "s", "screen" }, "Screen number to record (default 1).", "n", "1" },
@@ -318,6 +358,10 @@ int main(int argc, char *argv[])
                 codecs << QMediaFormat::videoCodecName(c);
             out << "  ." << Recorder::suffixFor(f) << ": " << codecs.join(", ") << "\n";
         }
+        QStringList audioFormats;
+        for (auto f : Recorder::supportedAudioFileFormats())
+            audioFormats << QLatin1Char('.') + Recorder::suffixFor(f);
+        out << "  audio only: " << audioFormats.join(", ") << "\n";
         out << "Audio:\n  system audio: " << (SystemAudio::isSupported() ? "available" : "not available") << "\n";
         const auto inputs = QMediaDevices::audioInputs();
         for (const QAudioDevice &d : inputs)
